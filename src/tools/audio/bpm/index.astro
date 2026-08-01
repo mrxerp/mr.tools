@@ -1,0 +1,115 @@
+---
+// mr.bpm — BPM from a loaded track (onset detection) or manual tap tempo.
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button">
+    <input type="file" accept="audio/*" data-file hidden />
+    <div class="dz-title">Drop a track or click to browse</div>
+    <div class="dz-hint">Decoded locally — unpublished material stays on your device.</div>
+  </div>
+  <output class="output-box" data-track aria-live="polite"></output>
+
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <div>
+      <span class="field-label">Estimated BPM</span>
+      <div class="output-box" style="font-size:1.6rem" data-bpm>—</div>
+    </div>
+    <div>
+      <span class="field-label">Manual tap tempo</span>
+      <div class="actions">
+        <button class="btn btn-primary" type="button" data-tap>Tap</button>
+        <button class="btn" type="button" data-reset disabled>Reset</button>
+      </div>
+      <div class="output-box" data-tapbpm>—</div>
+    </div>
+  </div>
+  <p class="muted" style="font-size:0.85rem">
+    Onset detection uses simple energy peaks, so it's most reliable on steady,
+    beat-driven music. The tap tempo is the fallback that always works.
+  </p>
+</section>
+
+<script>
+  import { detectBpm, tapToBpm } from "./tool.ts";
+  import { readFileAsArrayBuffer } from "@/lib/files";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const trackOut = document.querySelector<HTMLOutputElement>("[data-track]")!;
+  const bpmEl = document.querySelector<HTMLDivElement>("[data-bpm]")!;
+  const tapBtn = document.querySelector<HTMLButtonElement>("[data-tap]")!;
+  const resetBtn = document.querySelector<HTMLButtonElement>("[data-reset]")!;
+  const tapOut = document.querySelector<HTMLOutputElement>("[data-tapbpm]")!;
+
+  const taps: number[] = [];
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) void analyze(file);
+    fileInput.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) void analyze(file);
+  });
+
+  async function analyze(file: File) {
+    trackOut.innerHTML = "";
+    const el = document.createElement("div");
+    el.textContent = `Analyzing ${file.name}…`;
+    trackOut.appendChild(el);
+    bpmEl.textContent = "…";
+    try {
+      const ctx = new AudioContext();
+      const data = await readFileAsArrayBuffer(file);
+      const buf = await ctx.decodeAudioData(data);
+      await ctx.close();
+      const mono = new Float32Array(buf.length);
+      for (let c = 0; c < buf.numberOfChannels; c++) {
+        const ch = buf.getChannelData(c);
+        for (let i = 0; i < mono.length; i++) mono[i] += ch[i] / buf.numberOfChannels;
+      }
+      const bpm = detectBpm(mono, buf.sampleRate);
+      trackOut.innerHTML = "";
+      const done = document.createElement("div");
+      done.textContent = bpm > 0 ? `${file.name} — ${bpm} BPM` : `${file.name} — no steady beat detected`;
+      trackOut.appendChild(done);
+      bpmEl.textContent = bpm > 0 ? String(bpm) : "—";
+    } catch {
+      trackOut.innerHTML = "";
+      const err = document.createElement("div");
+      err.className = "error-text";
+      err.textContent = "Could not decode that file as audio.";
+      trackOut.appendChild(err);
+      bpmEl.textContent = "—";
+    }
+  }
+
+  tapBtn.addEventListener("click", () => {
+    taps.push(performance.now());
+    if (taps.length > 20) taps.shift();
+    const bpm = tapToBpm(taps);
+    tapOut.textContent = bpm > 0 ? `${bpm} BPM` : "Keep tapping to the beat…";
+    resetBtn.disabled = false;
+  });
+
+  resetBtn.addEventListener("click", () => {
+    taps.length = 0;
+    tapOut.textContent = "—";
+    resetBtn.disabled = true;
+  });
+</script>

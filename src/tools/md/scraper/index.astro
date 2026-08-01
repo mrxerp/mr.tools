@@ -1,0 +1,38 @@
+---
+// mr.scraper — clean messy web text to markdown.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Paste messy web text / article</span>
+    <textarea class="input" rows="12" placeholder="Paste copied article, email, or web content…" data-input></textarea>
+  </label>
+  <div class="actions">
+    <button class="btn btn-primary" data-clean>Clean to Markdown</button>
+    <button class="btn" data-extract>Extract Article</button>
+    <button class="btn" data-copy>Copy Result</button>
+  </div>
+  <div class="output-box" data-output aria-live="polite"></div>
+  <div data-warnings class="error-text" style="margin-top:0.5rem"></div>
+</section>
+
+<script>
+  import { cleanMarkdown, extractArticle } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const output = document.querySelector<HTMLDivElement>("[data-output]")!;
+  const warnings = document.querySelector<HTMLDivElement>("[data-warnings]")!;
+
+  function run(fn: typeof cleanMarkdown) {
+    const result = fn(input.value);
+    output.textContent = result.markdown;
+    warnings.textContent = result.warnings.length ? result.warnings.join("; ") : "";
+  }
+
+  document.querySelector("[data-clean]")!.addEventListener("click", () => run(cleanMarkdown));
+  document.querySelector("[data-extract]")!.addEventListener("click", () => run(extractArticle));
+
+  document.querySelector("[data-copy]")!.addEventListener("click", () => {
+    copyTextWithFeedback(output.textContent, document.querySelector("[data-copy]") as HTMLButtonElement);
+  });
+</script>

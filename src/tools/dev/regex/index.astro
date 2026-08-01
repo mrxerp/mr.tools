@@ -1,0 +1,286 @@
+---
+// mr regex — RegexRaptor. Sample-driven regex builder.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Sample Text</span>
+    <textarea class="input" rows="4" placeholder="Paste a sample string to build regex from…" data-sample></textarea>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Regex Pattern</span>
+    <input class="input" type="text" placeholder="Type or paste a regex pattern…" data-pattern />
+    <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap;">
+      <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; font-size: 0.85rem;">
+        <input type="checkbox" value="i" data-flag> Case insensitive (i)
+      </label>
+      <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; font-size: 0.85rem;">
+        <input type="checkbox" value="m" data-flag> Multiline (m)
+      </label>
+      <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; font-size: 0.85rem;">
+        <input type="checkbox" value="s" data-flag> Dot matches newline (s)
+      </label>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-test>Test Pattern</button>
+    <button class="btn" data-clear>Clear</button>
+    <button class="btn" data-escape>Escape Sample</button>
+  </div>
+
+  <div class="field" style="margin-top: 1rem;">
+    <span class="field-label">Matches in Sample</span>
+    <div class="output-box" data-matches style="min-height: 4rem; white-space: pre-wrap;"></div>
+  </div>
+
+  <div class="field" style="margin-top: 1rem;">
+    <span class="field-label">Token Explanation</span>
+    <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));" data-tokens></div>
+  </div>
+
+  <div class="field" style="margin-top: 1rem;">
+    <span class="field-label">Common Recipes</span>
+    <div class="grid" data-recipes></div>
+  </div>
+
+  <output class="output-box error-text" data-error style="display: none;"></output>
+</section>
+
+<script>
+  import {
+    findMatches,
+    explainTokens,
+    getRecipes,
+    suggestRecipe,
+    validatePattern,
+    escapeRegExp,
+    type RegexMatch,
+    type TokenExplanation,
+    type RegexRecipe,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const sampleInput = document.querySelector<HTMLTextAreaElement>("[data-sample]")!;
+  const patternInput = document.querySelector<HTMLInputElement>("[data-pattern]")!;
+  const flagCheckboxes = document.querySelectorAll<HTMLInputElement>("[data-flag]");
+  const testBtn = document.querySelector<HTMLButtonElement>("[data-test]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const escapeBtn = document.querySelector<HTMLButtonElement>("[data-escape]")!;
+  const matchesDiv = document.querySelector<HTMLDivElement>("[data-matches]")!;
+  const tokensDiv = document.querySelector<HTMLDivElement>("[data-tokens]")!;
+  const recipesDiv = document.querySelector<HTMLDivElement>("[data-recipes]")!;
+  const errorBox = document.querySelector<HTMLOutputElement>("[data-error]")!;
+
+  if (!sampleInput || !patternInput || !testBtn || !clearBtn || !escapeBtn || !matchesDiv || !tokensDiv || !recipesDiv || !errorBox) {
+    throw new Error("mr regex mount failed");
+  }
+
+  let debounce: number;
+
+  function showError(msg: string) {
+    errorBox.textContent = msg;
+    errorBox.style.display = "block";
+  }
+
+  function clearError() {
+    errorBox.textContent = "";
+    errorBox.style.display = "none";
+  }
+
+  function getFlags(): string {
+    return Array.from(flagCheckboxes).filter((cb) => cb.checked).map((cb) => cb.value).join("");
+  }
+
+  function renderMatches(matches: RegexMatch[], sample: string) {
+    if (matches.length === 0) {
+      matchesDiv.textContent = "No matches found";
+      matchesDiv.classList.add("muted");
+      return;
+    }
+    matchesDiv.classList.remove("muted");
+    matchesDiv.innerHTML = "";
+    let lastIndex = 0;
+    for (const match of matches) {
+      // Text before match
+      if (match.index > lastIndex) {
+        const textNode = document.createTextNode(sample.slice(lastIndex, match.index));
+        matchesDiv.appendChild(textNode);
+      }
+      // The match itself
+      const matchSpan = document.createElement("mark");
+      matchSpan.textContent = match.match;
+      matchSpan.style.background = "var(--accent-soft)";
+      matchSpan.style.color = "var(--accent)";
+      matchSpan.style.padding = "0 0.2rem";
+      matchSpan.style.borderRadius = "3px";
+      matchesDiv.appendChild(matchSpan);
+      lastIndex = match.index + match.match.length;
+    }
+    // Remaining text
+    if (lastIndex < sample.length) {
+      matchesDiv.appendChild(document.createTextNode(sample.slice(lastIndex)));
+    }
+  }
+
+  function renderTokens(tokens: TokenExplanation[]) {
+    tokensDiv.innerHTML = "";
+    for (const token of tokens) {
+      const card = document.createElement("div");
+      card.className = "output-box";
+      card.style.margin = "0";
+      card.style.padding = "0.5rem 0.75rem";
+
+      const tok = document.createElement("code");
+      tok.textContent = token.token;
+      tok.style.fontFamily = "var(--mono)";
+      tok.style.background = "var(--bg)";
+      tok.style.padding = "0.1rem 0.3rem";
+      tok.style.borderRadius = "4px";
+
+      const desc = document.createElement("div");
+      desc.className = "muted";
+      desc.style.fontSize = "0.8rem";
+      desc.style.marginTop = "0.25rem";
+      desc.textContent = token.description;
+
+      card.append(tok, desc);
+      tokensDiv.appendChild(card);
+    }
+  }
+
+  function renderRecipes(recipes: RegexRecipe[], sample: string) {
+    recipesDiv.innerHTML = "";
+    const suggested = suggestRecipe(sample);
+
+    for (const recipe of recipes) {
+      const card = document.createElement("div");
+      card.className = "card";
+      if (suggested && suggested.name === recipe.name) {
+        card.style.borderColor = "var(--accent)";
+        card.style.boxShadow = "var(--shadow)";
+      }
+
+      const name = document.createElement("div");
+      name.className = "card-name";
+      name.textContent = recipe.name;
+      if (suggested && suggested.name === recipe.name) {
+        const badge = document.createElement("span");
+        badge.className = "badge badge-ok";
+        badge.style.marginLeft = "0.5rem";
+        badge.style.fontSize = "0.7rem";
+        badge.textContent = "Matches sample!";
+        name.appendChild(badge);
+      }
+
+      const desc = document.createElement("div");
+      desc.className = "card-tagline";
+      desc.textContent = recipe.description;
+
+      const pattern = document.createElement("div");
+      pattern.style.fontFamily = "var(--mono)";
+      pattern.style.fontSize = "0.75rem";
+      pattern.style.color = "var(--muted)";
+      pattern.style.marginTop = "0.5rem";
+      pattern.style.wordBreak = "break-all";
+      pattern.textContent = recipe.pattern;
+
+      const example = document.createElement("div");
+      example.className = "muted";
+      example.style.fontSize = "0.75rem";
+      example.style.marginTop = "0.35rem";
+      example.textContent = `Example: ${recipe.example}`;
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-primary";
+      btn.style.marginTop = "0.75rem";
+      btn.style.width = "100%";
+      btn.textContent = "Use this pattern";
+      btn.addEventListener("click", () => {
+        patternInput.value = recipe.pattern;
+        testPattern();
+      });
+
+      card.append(name, desc, pattern, example, btn);
+      recipesDiv.appendChild(card);
+    }
+  }
+
+  function testPattern() {
+    clearError();
+    const pattern = patternInput.value;
+    const sample = sampleInput.value;
+    const flags = getFlags();
+
+    if (!pattern) {
+      showError("Enter a regex pattern");
+      return;
+    }
+
+    const validation = validatePattern(pattern, flags);
+    if (!validation.valid) {
+      showError(`Invalid regex: ${validation.error}`);
+      return;
+    }
+
+    // Clear previous results
+    matchesDiv.innerHTML = "";
+    tokensDiv.innerHTML = "";
+    matchesDiv.classList.remove("muted");
+
+    // Find matches
+    if (sample) {
+      const matches = findMatches(pattern, sample, flags);
+      renderMatches(matches, sample);
+    } else {
+      matchesDiv.textContent = "Enter sample text to see matches";
+      matchesDiv.classList.add("muted");
+    }
+
+    // Explain tokens
+    const tokens = explainTokens(pattern);
+    renderTokens(tokens);
+
+    // Show recipes
+    const recipes = getRecipes();
+    renderRecipes(recipes, sample);
+  }
+
+  function clearAll() {
+    sampleInput.value = "";
+    patternInput.value = "";
+    flagCheckboxes.forEach((cb) => (cb.checked = false));
+    matchesDiv.innerHTML = "";
+    tokensDiv.innerHTML = "";
+    clearError();
+    renderRecipes(getRecipes(), "");
+  }
+
+  function escapeSample() {
+    patternInput.value = escapeRegExp(sampleInput.value);
+    testPattern();
+  }
+
+  testBtn.addEventListener("click", testPattern);
+  clearBtn.addEventListener("click", clearAll);
+  escapeBtn.addEventListener("click", escapeSample);
+
+  // Instant test on input
+  patternInput.addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = window.setTimeout(() => {
+      if (patternInput.value.trim()) testPattern();
+    }, 200);
+  });
+
+  sampleInput.addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = window.setTimeout(() => {
+      if (patternInput.value.trim()) testPattern();
+    }, 200);
+  });
+
+  // Initial render of recipes
+  renderRecipes(getRecipes(), "");
+</script>

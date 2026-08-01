@@ -1,0 +1,191 @@
+---
+// mr.path — Build JSONPath/JSON Pointer expressions by clicking nodes in a JSON tree.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">JSON Input</span>
+    <textarea class="input" rows="8" placeholder="Paste JSON here…" data-input></textarea>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-parse>Parse & Build Tree</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div class="field" style="margin-top:1rem">
+    <span class="field-label">Path Expressions</span>
+    <div style="display:grid;gap:0.5rem;margin-top:0.5rem">
+      <div>
+        <label class="field-label" style="font-size:0.75rem">JSONPath</label>
+        <div style="display:flex;gap:0.5rem">
+          <input class="input" readonly data-jsonpath placeholder="Click a node in the tree…">
+          <button class="btn" data-copy-jsonpath>Copy</button>
+        </div>
+      </div>
+      <div>
+        <label class="field-label" style="font-size:0.75rem">JSON Pointer</label>
+        <div style="display:flex;gap:0.5rem">
+          <input class="input" readonly data-pointer placeholder="Click a node in the tree…">
+          <button class="btn" data-copy-pointer>Copy</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="field" style="margin-top:1rem">
+    <span class="field-label">JSON Tree <span data-count class="badge-plain"></span></span>
+    <div class="output-box" data-tree style="min-height:300px;max-height:500px;overflow:auto;font-family:var(--mono);font-size:0.85rem"></div>
+    <div class="error-text" data-error style="display:none;margin-top:0.5rem"></div>
+  </div>
+</section>
+
+<style>
+  .tree-node { cursor: pointer; user-select: none; }
+  .tree-node:hover { background: var(--accent-soft); }
+  .tree-node.selected { background: var(--accent-soft); outline: 1px solid var(--accent); }
+  .tree-key { color: #6b6a66; }
+  .tree-string { color: #2e9e5b; }
+  .tree-number { color: #5a5bd9; }
+  .tree-boolean { color: #b7791f; }
+  .tree-null { color: #9b9a94; font-style: italic; }
+  .tree-expand { display: inline-block; width: 1em; text-align: center; }
+  .tree-children { margin-left: 1.5rem; border-left: 1px solid var(--border); padding-left: 0.5rem; }
+  .tree-value { margin-left: 0.5rem; }
+</style>
+
+<script>
+  import {
+    buildPathTree,
+    evaluateJsonPath,
+    evaluatePointer,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const parseBtn = document.querySelector<HTMLButtonElement>("[data-parse]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const treeEl = document.querySelector<HTMLDivElement>("[data-tree]")!;
+  const countEl = document.querySelector<HTMLElement>("[data-count]")!;
+  const jsonpathEl = document.querySelector<HTMLInputElement>("[data-jsonpath]")!;
+  const pointerEl = document.querySelector<HTMLInputElement>("[data-pointer]")!;
+  const copyJsonpathBtn = document.querySelector<HTMLButtonElement>("[data-copy-jsonpath]")!;
+  const copyPointerBtn = document.querySelector<HTMLButtonElement>("[data-copy-pointer]")!;
+  const errorEl = document.querySelector<HTMLElement>("[data-error]")!;
+
+  let currentData: unknown = null;
+  let selectedNode: HTMLElement | null = null;
+
+  parseBtn.addEventListener("click", () => {
+    try {
+      currentData = JSON.parse(input.value);
+      errorEl.style.display = "none";
+      renderTree(currentData);
+    } catch (e) {
+      errorEl.style.display = "block";
+      errorEl.textContent = (e as Error).message;
+      treeEl.innerHTML = "";
+      countEl.textContent = "";
+    }
+  });
+
+  clearBtn.addEventListener("click", () => {
+    input.value = "";
+    treeEl.innerHTML = "";
+    countEl.textContent = "";
+    jsonpathEl.value = "";
+    pointerEl.value = "";
+    currentData = null;
+    errorEl.style.display = "none";
+  });
+
+  function renderTree(data: unknown) {
+    const nodes = buildPathTree(data);
+    let count = 0;
+
+    function countNodes(nodes: typeof nodes) {
+      for (const n of nodes) {
+        count++;
+        if (n.children) countNodes(n.children);
+      }
+    }
+    countNodes(nodes);
+    countEl.textContent = `${count} nodes`;
+
+    treeEl.innerHTML = "";
+    for (const node of nodes) {
+      treeEl.appendChild(renderNode(node));
+    }
+  }
+
+  function renderNode(node: any): HTMLElement {
+    const div = document.createElement("div");
+    div.className = "tree-node";
+    div.dataset.jsonpath = node.jsonPath;
+    div.dataset.pointer = node.pointer;
+
+    const expand = document.createElement("span");
+    expand.className = "tree-expand";
+    expand.textContent = node.children && node.children.length > 0 ? "▶" : "·";
+
+    const key = document.createElement("span");
+    key.className = "tree-key";
+    const keyName = node.jsonPath.split(".").pop()?.replace(/^\[.*\]$/, "") ?? "$";
+    key.textContent = keyName === "$" ? "$" : (node.jsonPath.startsWith("$.") ? keyName : keyName);
+
+    const value = document.createElement("span");
+    value.className = "tree-value";
+
+    if (node.type === "object" || node.type === "array") {
+      value.textContent = node.type === "array" ? ` [${node.children?.length ?? 0}]` : ` {${node.children?.length ?? 0}}`;
+      value.style.color = "var(--muted)";
+    } else if (node.type === "string") {
+      value.className = "tree-value tree-string";
+      value.textContent = ` "${String(node.value).slice(0, 50)}${String(node.value).length > 50 ? "…" : ""}"`;
+    } else if (node.type === "number") {
+      value.className = "tree-value tree-number";
+      value.textContent = ` ${node.value}`;
+    } else if (node.type === "boolean") {
+      value.className = "tree-value tree-boolean";
+      value.textContent = ` ${node.value}`;
+    } else if (node.type === "null") {
+      value.className = "tree-value tree-null";
+      value.textContent = " null";
+    }
+
+    div.append(expand, key, value);
+
+    if (node.children && node.children.length > 0) {
+      const childrenDiv = document.createElement("div");
+      childrenDiv.className = "tree-children";
+      childrenDiv.style.display = "none";
+      for (const child of node.children) {
+        childrenDiv.appendChild(renderNode(child));
+      }
+      div.appendChild(childrenDiv);
+
+      expand.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const isOpen = childrenDiv.style.display !== "none";
+        childrenDiv.style.display = isOpen ? "none" : "block";
+        expand.textContent = isOpen ? "▶" : "▼";
+      });
+    }
+
+    div.addEventListener("click", () => {
+      if (selectedNode) selectedNode.classList.remove("selected");
+      div.classList.add("selected");
+      selectedNode = div;
+      jsonpathEl.value = node.jsonPath;
+      pointerEl.value = node.pointer;
+    });
+
+    return div;
+  }
+
+  copyJsonpathBtn.addEventListener("click", () =>
+    copyTextWithFeedback(jsonpathEl.value, copyJsonpathBtn),
+  );
+  copyPointerBtn.addEventListener("click", () =>
+    copyTextWithFeedback(pointerEl.value, copyPointerBtn),
+  );
+</script>

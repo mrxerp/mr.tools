@@ -1,0 +1,210 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose CSV or XLSX files to merge">
+    <input type="file" multiple accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-input hidden />
+    <span class="dz-title">Drop CSV/XLSX files here or click to browse</span>
+    <span class="dz-hint">Multiple files — they will be merged in the order shown.</span>
+  </div>
+
+  <ol data-list class="merge-list" aria-label="Files to merge"></ol>
+  <div class="field-label" data-total></div>
+
+  <fieldset class="field" data-options style="display:none;margin-top:1rem">
+    <legend class="field-label">Merge options</legend>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <span style="width:100px">Mode:</span>
+      <select class="input" data-mode style="flex:1;max-width:200px">
+        <option value="concat">Concatenate (stack rows)</option>
+        <option value="union">Union by key (unique by key columns)</option>
+        <option value="intersect">Intersect by key (only keys in all files)</option>
+      </select>
+    </label>
+    <div data-key-options style="display:none;margin-top:0.5rem">
+      <label class="field">
+        <span class="field-label">Key columns (comma-separated)</span>
+        <input type="text" class="input" placeholder="e.g. id,region" data-key-cols />
+        <span class="muted" style="font-size:0.8rem">Used for union/intersect and deduplication</span>
+      </label>
+    </div>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <span style="width:100px">Dedupe:</span>
+      <select class="input" data-dedup style="flex:1;max-width:200px">
+        <option value="none">None</option>
+        <option value="first" selected>Keep first occurrence</option>
+        <option value="last">Keep last occurrence</option>
+      </select>
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-include-header /> Include header row
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <span style="width:100px">Output:</span>
+      <select class="input" data-outfmt style="flex:1;max-width:200px">
+        <option value="csv">CSV</option>
+        <option value="xlsx">XLSX</option>
+      </select>
+    </label>
+  </fieldset>
+
+  <div class="actions" style="margin-top:1rem">
+    <button type="button" class="btn btn-primary" data-run disabled>Merge</button>
+    <button type="button" class="btn" data-download hidden>Download</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<style>
+  .merge-list {
+    margin: 0.8rem 0 0.4rem;
+    padding-left: 1.4rem;
+    display: grid;
+    gap: 0.35rem;
+  }
+  .merge-list li {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    font-size: 0.9rem;
+  }
+  .merge-list .size { color: var(--muted); }
+  .merge-list .remove {
+    margin-left: auto;
+    border: none;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .merge-list .remove:hover { color: var(--danger); }
+</style>
+
+<script>
+  import { mergeSpreadsheets, mergeToXLSX } from "./tool.ts";
+  import { readFileAsArrayBuffer, readFileAsText, formatBytes, swapExtension, fileNameOf } from "@/lib/files";
+  import { downloadText, downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const list = document.querySelector<HTMLOListElement>("[data-list]");
+  const total = document.querySelector<HTMLDivElement>("[data-total]");
+  const opts = document.querySelector<HTMLFieldSetElement>("[data-options]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const download = document.querySelector<HTMLButtonElement>("[data-download]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  const modeSel = document.querySelector<HTMLSelectElement>("[data-mode]");
+  const keyOpts = document.querySelector<HTMLDivElement>("[data-key-options]");
+  const keyCols = document.querySelector<HTMLInputElement>("[data-key-cols]");
+  const dedupSel = document.querySelector<HTMLSelectElement>("[data-dedup]");
+  const headerChk = document.querySelector<HTMLInputElement>("[data-include-header]");
+  const outFmtSel = document.querySelector<HTMLSelectElement>("[data-outfmt]");
+
+  if (!zone || !input || !list || !total || !opts || !run || !download || !out ||
+      !modeSel || !keyOpts || !keyCols || !dedupSel || !headerChk || !outFmtSel) {
+    throw new Error("mr merge mount failed");
+  }
+
+  const files: File[] = [];
+  let lastResult: Awaited<ReturnType<typeof mergeSpreadsheets>> | null = null;
+  let lastXlsx: Uint8Array | null = null;
+
+  const render = () => {
+    list.textContent = "";
+    for (const [i, file] of files.entries()) {
+      const li = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = file.name;
+      const size = document.createElement("span");
+      size.className = "size";
+      size.textContent = formatBytes(file.size);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "remove";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => { files.splice(i, 1); render(); });
+      li.append(name, size, remove);
+      list.appendChild(li);
+    }
+    const bytes = files.reduce((n, f) => n + f.size, 0);
+    total.textContent = files.length ? `${files.length} file${files.length === 1 ? "" : "s"} · ${formatBytes(bytes)} total` : "";
+    run.disabled = files.length < 2;
+    opts.style.display = files.length >= 2 ? "" : "none";
+  };
+
+  const addFiles = (incoming: FileList | File[]) => {
+    for (const file of Array.from(incoming)) {
+      if (file.name.toLowerCase().endsWith(".csv") || file.name.toLowerCase().endsWith(".xlsx") ||
+          file.type === "text/csv" || file.type.includes("spreadsheetml")) {
+        files.push(file);
+      }
+    }
+    render();
+  };
+
+  const updateModeUI = () => {
+    keyOpts.style.display = modeSel.value === "concat" ? "none" : "";
+  };
+
+  const doMerge = async () => {
+    if (files.length < 2) return;
+    run.disabled = true;
+    out.textContent = "Merging…";
+    try {
+      const inputs = await Promise.all(files.map(async f => ({
+        data: f.name.toLowerCase().endsWith(".xlsx") ? await readFileAsArrayBuffer(f) : await readFileAsText(f),
+        isXlsx: f.name.toLowerCase().endsWith(".xlsx"),
+        name: f.name,
+      })));
+
+      const keyColumns = modeSel.value === "concat" ? [] : keyCols.value.split(",").map(s => s.trim()).filter(Boolean);
+      lastResult = await mergeSpreadsheets(inputs, {
+        mode: modeSel.value as "concat" | "union" | "intersect",
+        keyColumns,
+        dedup: dedupSel.value as "none" | "first" | "last",
+        includeHeader: headerChk.checked,
+        outputFormat: outFmtSel.value as "csv" | "xlsx",
+      });
+
+      if (outFmtSel.value === "xlsx") {
+        lastXlsx = await mergeToXLSX(lastResult);
+        out.textContent = `Merged: ${lastResult.outputRows} rows (${lastResult.totalInputRows} in, ${lastResult.removedDuplicates} dupes removed) · XLSX ${formatBytes(lastXlsx.length)}`;
+      } else {
+        out.textContent = `Merged: ${lastResult.outputRows} rows (${lastResult.totalInputRows} in, ${lastResult.removedDuplicates} dupes removed)`;
+      }
+      download.hidden = false;
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Merge failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = files.length < 2;
+    }
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  input.addEventListener("change", () => { if (input.files) addFiles(input.files); input.value = ""; });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("drag"); if (e.dataTransfer) addFiles(e.dataTransfer.files); });
+
+  modeSel.addEventListener("change", updateModeUI);
+
+  run.addEventListener("click", doMerge);
+
+  download.addEventListener("click", () => {
+    if (!lastResult || files.length === 0) return;
+    const baseName = fileNameOf(files[0]).replace(/\.[^./\\]+$/, "") + "_merged";
+    if (outFmtSel.value === "xlsx" && lastXlsx) {
+      downloadArrayBuffer(lastXlsx, baseName + ".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    } else {
+      const csv = lastResult.headers.join(",") + "\n" + lastResult.rows.map(r => r.map(c => c.includes(",") || c.includes('"') || c.includes("\n") ? '"' + c.replace(/"/g, '""') + '"' : c).join(",")).join("\n");
+      downloadText(csv, baseName + ".csv", "text/csv");
+    }
+  });
+
+  render();
+</script>

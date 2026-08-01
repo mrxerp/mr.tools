@@ -1,0 +1,160 @@
+---
+// mr world clock — live clock grid with URL-encoded share links.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Preset cities</span>
+    <div class="chips" data-chips></div>
+  </div>
+  <label class="field">
+    <span class="field-label">Custom zones (IANA names, comma-separated)</span>
+    <input class="input" type="text" placeholder="Asia/Kolkata, America/New_York, London…" data-custom />
+  </label>
+  <div class="actions">
+    <button class="btn" type="button" data-copy>Copy share link</button>
+  </div>
+  <p class="muted wc-note" data-note>Pick cities to see a live clock for each.</p>
+  <div class="grid wc-grid" data-grid></div>
+</section>
+
+<style>
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+  .chip {
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 0.3rem 0.75rem;
+    cursor: pointer;
+  }
+  .chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+  .wc-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    margin-block: 1rem 0;
+  }
+  .wc-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    padding: 0.8rem 0.9rem;
+  }
+  .wc-card .city {
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+  .wc-card .time {
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    margin: 0.15rem 0;
+  }
+  .wc-card .meta {
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .wc-note {
+    font-size: 0.85rem;
+    margin-block: 0.6rem 0;
+  }
+</style>
+
+<script>
+  import {
+    CITY_PRESETS,
+    buildZoneParam,
+    normalizeZones,
+    parseZoneParam,
+    zoneTick,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const chipsEl = document.querySelector<HTMLDivElement>("[data-chips]")!;
+  const customEl = document.querySelector<HTMLInputElement>("[data-custom]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const gridEl = document.querySelector<HTMLDivElement>("[data-grid]")!;
+  const noteEl = document.querySelector<HTMLParagraphElement>("[data-note]")!;
+
+  const selected = new Set<string>();
+  let zones: string[] = [];
+
+  function renderGrid() {
+    gridEl.innerHTML = "";
+    noteEl.hidden = zones.length > 0;
+    const now = new Date();
+    for (const zone of zones) {
+      const t = zoneTick(now, zone);
+      const card = document.createElement("div");
+      card.className = "wc-card";
+      const city = document.createElement("div");
+      city.className = "city";
+      city.textContent = t.city;
+      const time = document.createElement("div");
+      time.className = "time";
+      time.textContent = t.time;
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = `${t.offsetLabel} · ${t.zoneName}`;
+      card.append(city, time, meta);
+      gridEl.appendChild(card);
+    }
+  }
+
+  function refresh() {
+    zones = normalizeZones([...selected, ...customEl.value.split(",")].join(","));
+    for (const b of chipsEl.querySelectorAll<HTMLButtonElement>("[data-chip]")) {
+      b.classList.toggle("active", selected.has(b.dataset.zone ?? ""));
+    }
+    renderGrid();
+    const q = zones.length ? `?cities=${buildZoneParam(zones)}` : location.pathname;
+    history.replaceState(null, "", q);
+  }
+
+  for (const preset of CITY_PRESETS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    b.dataset.chip = "";
+    b.dataset.zone = preset.zone;
+    b.textContent = preset.city;
+    b.addEventListener("click", () => {
+      if (selected.has(preset.zone)) selected.delete(preset.zone);
+      else selected.add(preset.zone);
+      refresh();
+    });
+    chipsEl.appendChild(b);
+  }
+
+  customEl.addEventListener("input", refresh);
+
+  const urlZones = parseZoneParam(new URLSearchParams(location.search).get("cities"));
+  if (urlZones.length) {
+    const customParts: string[] = [];
+    for (const z of urlZones) {
+      if (CITY_PRESETS.some((p) => p.zone === z)) selected.add(z);
+      else customParts.push(z);
+    }
+    customEl.value = [...new Set(customParts)].join(", ");
+  } else {
+    for (const p of CITY_PRESETS.slice(0, 3)) selected.add(p.zone);
+  }
+
+  copyBtn.addEventListener("click", () => {
+    copyTextWithFeedback(
+      `${location.origin}${location.pathname}?cities=${buildZoneParam(zones)}`,
+      copyBtn,
+    );
+  });
+
+  refresh();
+  setInterval(renderGrid, 1000);
+</script>

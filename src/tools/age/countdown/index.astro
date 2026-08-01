@@ -1,0 +1,91 @@
+---
+// mr.countdown — live countdown to a target with shareable links.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Countdown to</span>
+    <input class="input" type="datetime-local" data-target />
+  </label>
+  <div class="actions">
+    <button class="btn" type="button" data-share>Copy share link</button>
+  </div>
+  <output class="output-box cd-out" data-out aria-live="polite"></output>
+</section>
+
+<style>
+  .cd-out {
+    font-size: 1.4rem;
+    text-align: center;
+    padding: 1.2rem;
+  }
+  .cd-out .cd-label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-family: var(--font);
+  }
+</style>
+
+<script>
+  import {
+    countdownParts,
+    countdownShareUrl,
+    encodeTarget,
+    parseEncodedTarget,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const targetEl = document.querySelector<HTMLInputElement>("[data-target]")!;
+  const shareBtn = document.querySelector<HTMLButtonElement>("[data-share]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
+  if (!targetEl || !shareBtn || !out) throw new Error("mr.countdown mount failed");
+
+  let target: Date | null = null;
+
+  function render() {
+    out.innerHTML = "";
+    if (!target || Number.isNaN(target.getTime())) {
+      out.textContent = "Pick a date and time to start the countdown.";
+      return;
+    }
+    const p = countdownParts(target, new Date());
+    if (p.done) {
+      out.textContent = "That time has arrived.";
+      return;
+    }
+    const lines = [
+      `<span class="cd-label">Time left</span>`,
+      `${p.days} days · ${p.hours} h · ${p.minutes} min · ${p.seconds} s`,
+    ];
+    const div = document.createElement("div");
+    div.innerHTML = lines.join("<br>");
+    out.appendChild(div);
+  }
+
+  function onTargetChanged() {
+    target = targetEl.value ? new Date(targetEl.value) : null;
+    render();
+  }
+
+  targetEl.addEventListener("input", onTargetChanged);
+
+  shareBtn.addEventListener("click", () => {
+    if (!target || Number.isNaN(target.getTime())) return;
+    copyTextWithFeedback(
+      countdownShareUrl(`${location.origin}${location.pathname}`, target),
+      shareBtn,
+    );
+  });
+
+  const param = new URLSearchParams(location.search).get("target");
+  if (param) {
+    const t = parseEncodedTarget(param);
+    if (!Number.isNaN(t.getTime())) {
+      targetEl.value = encodeTarget(t);
+      target = t;
+    }
+  }
+  if (!targetEl.value) targetEl.value = new Date(Date.now() + 86400000 * 7).toISOString().slice(0, 16);
+
+  onTargetChanged();
+  setInterval(render, 500);
+</script>

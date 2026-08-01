@@ -1,0 +1,158 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose CSV file to clean">
+    <input type="file" accept=".csv,text/csv" data-input hidden />
+    <span class="dz-title">Drop a CSV file here or click to browse</span>
+    <span class="dz-hint">The file is cleaned entirely in your browser.</span>
+  </div>
+
+  <fieldset class="field" data-options>
+    <legend class="field-label">Cleaning options</legend>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-opt-trim /> Trim whitespace from cells
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-opt-dedupe /> Remove duplicate rows
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-opt-line /> Fix line endings (normalize to LF)
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-opt-delim /> Normalize delimiter to comma
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-opt-quote /> Normalize quoting (RFC 4180)
+    </label>
+  </fieldset>
+
+  <div class="actions">
+    <button type="button" class="btn btn-primary" data-run disabled>Clean CSV</button>
+    <button type="button" class="btn" data-download hidden>Download cleaned CSV</button>
+  </div>
+
+  <div class="field" data-log></div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+
+  <details data-preview style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Preview (first 50 rows)</summary>
+    <div class="output-box" style="max-height:300px;overflow:auto;font-size:0.8rem" data-preview-content></div>
+  </details>
+</section>
+
+<style>
+  .output-box pre { margin: 0; }
+</style>
+
+<script>
+  import { cleanCSV } from "./tool.ts";
+  import { readFileAsText, formatBytes, swapExtension } from "@/lib/files";
+  import { downloadText } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const download = document.querySelector<HTMLButtonElement>("[data-download]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  const log = document.querySelector<HTMLDivElement>("[data-log]");
+  const previewContent = document.querySelector<HTMLDivElement>("[data-preview-content]");
+  const optTrim = document.querySelector<HTMLInputElement>("[data-opt-trim]");
+  const optDedupe = document.querySelector<HTMLInputElement>("[data-opt-dedupe]");
+  const optLine = document.querySelector<HTMLInputElement>("[data-opt-line]");
+  const optDelim = document.querySelector<HTMLInputElement>("[data-opt-delim]");
+  const optQuote = document.querySelector<HTMLInputElement>("[data-opt-quote]");
+
+  if (!zone || !input || !run || !download || !out || !log || !previewContent ||
+      !optTrim || !optDedupe || !optLine || !optDelim || !optQuote) {
+    throw new Error("mr clean mount failed");
+  }
+
+  let file: File | null = null;
+  let cleanedCsv = "";
+
+  const options = () => ({
+    trimWhitespace: optTrim.checked,
+    dedupeRows: optDedupe.checked,
+    fixLineEndings: optLine.checked,
+    normalizeDelimiter: optDelim.checked,
+    normalizeQuoting: optQuote.checked,
+  });
+
+  const renderLog = (result: ReturnType<typeof cleanCSV>) => {
+    log.innerHTML = "";
+    if (result.changes.length === 0) {
+      log.textContent = "No changes made — file was already clean.";
+      return;
+    }
+    const ul = document.createElement("ul");
+    ul.style.margin = "0.5rem 0 0 1.2rem";
+    for (const c of result.changes) {
+      const li = document.createElement("li");
+      li.textContent = c;
+      ul.appendChild(li);
+    }
+    log.appendChild(ul);
+    log.insertAdjacentHTML("afterbegin", `<div class="field-label">What I changed (${result.changes.length} action${result.changes.length === 1 ? "" : "s"}):</div>`);
+  };
+
+  const renderPreview = (csv: string) => {
+    const lines = csv.split("\n").slice(0, 51);
+    previewContent.textContent = lines.join("\n");
+  };
+
+  const addFile = (f: File) => {
+    file = f;
+    run.disabled = false;
+    out.textContent = `Ready: ${f.name} (${formatBytes(f.size)})`;
+    log.textContent = "";
+    previewContent.textContent = "";
+    download.hidden = true;
+    cleanedCsv = "";
+  };
+
+  const doClean = async () => {
+    if (!file) return;
+    run.disabled = true;
+    out.textContent = "Cleaning…";
+    try {
+      const text = await readFileAsText(file);
+      const result = cleanCSV(text, options());
+      cleanedCsv = result.csv;
+      renderLog(result);
+      renderPreview(result.csv);
+      out.textContent = `Cleaned: ${result.cleanedRowCount} rows (removed ${result.removedRows} duplicates) · ${formatBytes(new TextEncoder().encode(result.csv).length)}`;
+      download.hidden = false;
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Cleaning failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = !file;
+    }
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+  });
+  input.addEventListener("change", () => {
+    if (input.files?.[0]) addFile(input.files[0]);
+    input.value = "";
+  });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer?.files?.[0]) addFile(e.dataTransfer.files[0]);
+  });
+
+  run.addEventListener("click", doClean);
+
+  download.addEventListener("click", () => {
+    if (cleanedCsv && file) downloadText(cleanedCsv, swapExtension(file.name, "csv"), "text/csv");
+  });
+</script>

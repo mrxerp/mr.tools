@@ -1,0 +1,197 @@
+---
+---
+<section class="stage">
+  <h2>EncodingKit</h2>
+  <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem">Detect text encoding (UTF-8, UTF-16, Latin-1, Shift-JIS), convert to UTF-8, repair mojibake.</p>
+
+  <div class="field">
+    <span class="field-label">File</span>
+    <div class="drop-zone" data-zone>
+      <input type="file" class="input" style="display:none" accept=".txt,.csv,.log,.xml,.json,.html,.css,.js,.ts" data-file />
+      <div class="dz-title">Drop text file or click to browse</div>
+      <div class="dz-hint">Any text file — max 10MB recommended</div>
+    </div>
+  </div>
+
+  <div class="field" data-convert-ui style="display:none">
+    <span class="field-label">Force Encoding (optional)</span>
+    <select class="input" data-force-encoding>
+      <option value="">Auto-detect</option>
+      <option value="utf-8">UTF-8</option>
+      <option value="utf-16le">UTF-16 LE</option>
+      <option value="utf-16be">UTF-16 BE</option>
+      <option value="iso-8859-1">Latin-1 (ISO-8859-1)</option>
+      <option value="shift_jis">Shift-JIS</option>
+      <option value="windows-1252">Windows-1252</option>
+    </select>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-detect style="display:none">Detect & Convert</button>
+    <button class="btn" data-download style="display:none">Download UTF-8</button>
+    <button class="btn" data-repair style="display:none">Apply Repair</button>
+  </div>
+
+  <div class="output-box" data-result style="display:none;max-height:400px;overflow:auto"></div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { detectEncoding, convertToUtf8, formatBytes } from "./tool.ts";
+  import { downloadText } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const convertUi = document.querySelectorAll<HTMLElement>("[data-convert-ui]");
+  const forceEncodingSel = document.querySelector<HTMLSelectElement>("[data-force-encoding]")!;
+  const detectBtn = document.querySelector<HTMLButtonElement>("[data-detect]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const repairBtn = document.querySelector<HTMLButtonElement>("[data-repair]")!;
+  const resultBox = document.querySelector<HTMLElement>("[data-result]")!;
+  const outBox = document.querySelector<HTMLElement>("[data-out]")!;
+
+  let fileData: Uint8Array | null = null;
+  let detectionResult: any = null;
+  let currentText: string = "";
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer?.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files?.[0]) handleFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  async function handleFile(file: File) {
+    detectBtn.disabled = true;
+    detectBtn.style.display = "none";
+    downloadBtn.style.display = "none";
+    repairBtn.style.display = "none";
+    resultBox.style.display = "none";
+    convertUi.forEach(el => el.style.display = "none");
+
+    outBox.textContent = "Reading file...";
+    outBox.className = "output-box";
+
+    try {
+      fileData = new Uint8Array(await file.arrayBuffer());
+      outBox.textContent = `Loaded ${file.name} (${formatBytes(fileData.length)})`;
+      outBox.className = "output-box ok-text";
+
+      convertUi.forEach(el => el.style.display = "");
+      detectBtn.style.display = "";
+      detectBtn.disabled = false;
+      detectBtn.textContent = "Detect & Convert";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  }
+
+  detectBtn.addEventListener("click", () => {
+    if (!fileData) return;
+    detectBtn.disabled = true;
+    detectBtn.textContent = "Detecting...";
+    outBox.textContent = "";
+    outBox.className = "output-box";
+
+    try {
+      const forceEncoding = forceEncodingSel.value || undefined;
+      detectionResult = forceEncoding ? {
+        encoding: forceEncoding,
+        confidence: 1.0,
+        alternativeEncodings: [],
+        convertedText: convertToUtf8(fileData, forceEncoding),
+        mojibakeDetected: false,
+        mojibakeRepair: undefined,
+      } : detectEncoding(fileData);
+
+      currentText = detectionResult.convertedText;
+      renderResult();
+      downloadBtn.style.display = "";
+      if (detectionResult.mojibakeDetected && detectionResult.mojibakeRepair) {
+        repairBtn.style.display = "";
+      }
+      outBox.textContent = `Detected: ${detectionResult.encoding} (${(detectionResult.confidence * 100).toFixed(0)}% confidence)`;
+      outBox.className = "output-box ok-text";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    } finally {
+      detectBtn.disabled = false;
+      detectBtn.textContent = "Detect & Convert";
+    }
+  });
+
+  function renderResult() {
+    if (!detectionResult) return;
+    resultBox.style.display = "block";
+    resultBox.innerHTML = "";
+
+    const div = document.createElement("div");
+    div.style.fontSize = "0.9rem";
+    div.innerHTML = `
+      <strong>Detected Encoding:</strong> ${detectionResult.encoding}<br>
+      <strong>Confidence:</strong> ${(detectionResult.confidence * 100).toFixed(0)}%<br>
+      ${detectionResult.alternativeEncodings.length > 0 ? `<strong>Alternatives:</strong> ${detectionResult.alternativeEncodings.map((a: any) => `${a.encoding} (${(a.confidence * 100).toFixed(0)}%)`).join(", ")}<br>` : ""}
+      ${detectionResult.mojibakeDetected ? `<strong style="color:var(--warn)">⚠ Mojibake detected: ${detectionResult.mojibakeRepair?.explanation || "Unknown pattern"}</strong><br>` : "<strong style=\"color:var(--ok)\">✓ No mojibake detected</strong><br>"}
+    `;
+    resultBox.appendChild(div);
+
+    const preview = document.createElement("div");
+    preview.style.marginTop = "0.5rem";
+    preview.style.fontFamily = "var(--mono)";
+    preview.style.fontSize = "0.8rem";
+    preview.style.maxHeight = "250px";
+    preview.style.overflow = "auto";
+    preview.style.background = "var(--bg)";
+    preview.style.padding = "0.5rem";
+    preview.style.borderRadius = "var(--radius-sm)";
+    preview.style.whiteSpace = "pre-wrap";
+    preview.textContent = detectionResult.convertedText.slice(0, 5000);
+    resultBox.appendChild(preview);
+
+    if (detectionResult.mojibakeRepair) {
+      const diff = document.createElement("div");
+      diff.style.marginTop = "0.5rem";
+      diff.style.fontSize = "0.8rem";
+      diff.innerHTML = `
+        <strong>Before:</strong> ${escapeHtml(detectionResult.mojibakeRepair.original)}<br>
+        <strong>After:</strong> <span style="color:var(--ok)">${escapeHtml(detectionResult.mojibakeRepair.repaired)}</span><br>
+        <em>${escapeHtml(detectionResult.mojibakeRepair.explanation)}</em>
+      `;
+      resultBox.appendChild(diff);
+    }
+  }
+
+  function escapeHtml(s: string) {
+    return s.replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">").replace(/"/g, "\"").replace(/'/g, "'");
+  }
+
+  downloadBtn.addEventListener("click", () => {
+    if (!currentText) return;
+    downloadText(currentText, "converted.txt", "text/plain; charset=utf-8");
+  });
+
+  repairBtn.addEventListener("click", () => {
+    if (!detectionResult?.mojibakeRepair) return;
+    currentText = detectionResult.mojibakeRepair.repaired + detectionResult.convertedText.slice(detectionResult.mojibakeRepair.repaired.length);
+    detectionResult.mojibakeDetected = false;
+    detectionResult.mojibakeRepair = undefined;
+    detectionResult.convertedText = currentText;
+    renderResult();
+    repairBtn.style.display = "none";
+    outBox.textContent = "Mojibake repair applied";
+    outBox.className = "output-box ok-text";
+  });
+</script>
+
+<style>
+  .drop-zone.drag { border-color: var(--accent); background: var(--accent-soft); }
+</style>

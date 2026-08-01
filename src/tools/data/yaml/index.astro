@@ -1,0 +1,109 @@
+---
+// mr.yaml — Validate/lint YAML with error positions, JSON↔YAML conversion with quoting-safety warnings.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">YAML / JSON Input</span>
+    <textarea class="input" rows="10" placeholder="Paste YAML or JSON here…" data-input></textarea>
+  </div>
+
+  <div class="actions">
+    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem">
+      <input type="radio" name="mode" value="yaml" checked data-mode>
+      <span>Validate YAML</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;margin-left:1rem">
+      <input type="radio" name="mode" value="tojson" data-mode>
+      <span>YAML → JSON</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;margin-left:1rem">
+      <input type="radio" name="mode" value="toyaml" data-mode>
+      <span>JSON → YAML</span>
+    </label>
+    <button class="btn btn-primary" data-run style="margin-left:auto">Run</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div class="field" style="margin-top:1rem">
+    <span class="field-label">Output <span data-status class="badge-plain"></span></span>
+    <textarea class="input" rows="12" readonly data-output aria-live="polite"></textarea>
+    <div class="error-text" data-error style="display:none;margin-top:0.5rem"></div>
+    <div data-warnings style="margin-top:0.5rem"></div>
+  </div>
+</section>
+
+<script>
+  import {
+    parseYaml,
+    convertJsonToYaml,
+    convertYamlToJson,
+    lintYaml,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { downloadText } from "@/lib/download";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const output = document.querySelector<HTMLTextAreaElement>("[data-output]")!;
+  const status = document.querySelector<HTMLElement>("[data-status]")!;
+  const errorEl = document.querySelector<HTMLElement>("[data-error]")!;
+  const warningsEl = document.querySelector<HTMLElement>("[data-warnings]")!;
+  const runBtn = document.querySelector<HTMLButtonElement>("[data-run]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const modeRadios = document.querySelectorAll<HTMLInputElement>("[data-mode]");
+
+  function getMode(): string {
+    return Array.from(modeRadios).find((r) => r.checked)?.value ?? "yaml";
+  }
+
+  function run() {
+    errorEl.style.display = "none";
+    warningsEl.innerHTML = "";
+    output.value = "";
+    status.textContent = "";
+    status.className = "badge-plain";
+
+    const mode = getMode();
+    let result;
+
+    if (mode === "yaml") {
+      result = lintYaml(input.value);
+    } else if (mode === "tojson") {
+      result = convertYamlToJson(input.value);
+    } else {
+      result = convertJsonToYaml(input.value);
+    }
+
+    if (result.valid) {
+      status.textContent = "Valid";
+      status.className = "badge-ok";
+      output.value = result.json ?? result.yaml ?? "";
+      if (result.warnings && result.warnings.length > 0) {
+        for (const w of result.warnings) {
+          const div = document.createElement("div");
+          div.className = "error-text";
+          div.style.fontSize = "0.85rem";
+          div.textContent = `⚠ ${w}`;
+          warningsEl.appendChild(div);
+        }
+      }
+    } else {
+      status.textContent = "Invalid";
+      status.className = "badge";
+      errorEl.style.display = "block";
+      errorEl.textContent = result.error?.message ?? "Error";
+      if (result.error?.line) {
+        errorEl.textContent += ` (line ${result.error.line}, col ${result.error.column})`;
+      }
+    }
+  }
+
+  runBtn.addEventListener("click", run);
+  clearBtn.addEventListener("click", () => {
+    input.value = "";
+    output.value = "";
+    status.textContent = "";
+    status.className = "badge-plain";
+    errorEl.style.display = "none";
+    warningsEl.innerHTML = "";
+  });
+</script>

@@ -1,0 +1,337 @@
+---
+---
+<section class="stage">
+  <h2>ArchiveKit</h2>
+  <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem">Create and extract ZIP, TAR, GZIP archives. Preview contents, select files, password-protect ZIPs.</p>
+
+  <div class="field">
+    <span class="field-label">Mode</span>
+    <select class="input" data-mode>
+      <option value="extract">Extract / Preview</option>
+      <option value="create">Create Archive</option>
+    </select>
+  </div>
+
+  <div class="field" data-extract-ui>
+    <span class="field-label">Archive File</span>
+    <div class="drop-zone" data-zone>
+      <input type="file" class="input" style="display:none" accept=".zip,.tar,.gz,.tgz" data-file />
+      <div class="dz-title">Drop archive or click to browse</div>
+      <div class="dz-hint">ZIP, TAR, GZIP — max 500MB recommended</div>
+    </div>
+  </div>
+
+  <div class="field" data-create-ui style="display:none">
+    <span class="field-label">Files to Archive</span>
+    <div class="drop-zone" data-create-zone>
+      <input type="file" class="input" style="display:none" multiple data-create-files />
+      <div class="dz-title">Drop files or click to browse</div>
+      <div class="dz-hint">Any files — they will be added to the archive</div>
+    </div>
+    <div class="muted" style="font-size:0.85rem" data-create-count>0 files selected</div>
+  </div>
+
+  <div class="field" data-format-ui style="display:none">
+    <span class="field-label">Output Format</span>
+    <select class="input" data-format>
+      <option value="zip">ZIP</option>
+      <option value="tar">TAR</option>
+      <option value="gzip">GZIP (single file only)</option>
+    </select>
+  </div>
+
+  <div class="field" data-password-ui style="display:none">
+    <span class="field-label">ZIP Password (optional)</span>
+    <input class="input" type="password" placeholder="Leave empty for no encryption" data-password />
+    <div class="muted" style="font-size:0.8rem;margin-top:0.3rem">Uses WebCrypto AES-GCM. Only for ZIP format.</div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-run>Extract</button>
+    <button class="btn" data-create style="display:none">Create Archive</button>
+    <button class="btn" data-download style="display:none">Download Archive</button>
+  </div>
+
+  <div class="output-box" data-preview style="display:none;max-height:300px;overflow:auto"></div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { readArchive, extractArchive, createArchive, formatBytes } from "./tool.ts";
+  import { downloadArrayBuffer } from "@/lib/download";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const modeSel = document.querySelector<HTMLSelectElement>("[data-mode]")!;
+  const extractUI = document.querySelector<HTMLElement>("[data-extract-ui]")!;
+  const createUI = document.querySelector<HTMLElement>("[data-create-ui]")!;
+  const formatUI = document.querySelector<HTMLElement>("[data-format-ui]")!;
+  const passwordUI = document.querySelector<HTMLElement>("[data-password-ui]")!;
+  const runBtn = document.querySelector<HTMLButtonElement>("[data-run]")!;
+  const createBtn = document.querySelector<HTMLButtonElement>("[data-create]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const previewBox = document.querySelector<HTMLElement>("[data-preview]")!;
+  const outBox = document.querySelector<HTMLElement>("[data-out]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const createFileInput = document.querySelector<HTMLInputElement>("[data-create-files]")!;
+  const formatSel = document.querySelector<HTMLSelectElement>("[data-format]")!;
+  const passwordInput = document.querySelector<HTMLInputElement>("[data-password]")!;
+  const createCount = document.querySelector<HTMLElement>("[data-create-count]")!;
+  const dropZone = document.querySelector<HTMLElement>("[data-zone]")!;
+  const createDropZone = document.querySelector<HTMLElement>("[data-create-zone]")!;
+
+  let currentArchive: ArrayBuffer | null = null;
+  let currentEntries: any[] = [];
+  let selectedEntries = new Set<string>();
+  let createdArchive: Uint8Array | null = null;
+
+  function showExtract() {
+    extractUI.style.display = "";
+    createUI.style.display = "none";
+    formatUI.style.display = "none";
+    passwordUI.style.display = "none";
+    runBtn.style.display = "";
+    createBtn.style.display = "none";
+    downloadBtn.style.display = "none";
+    runBtn.textContent = "Extract Selected";
+  }
+
+  function showCreate() {
+    extractUI.style.display = "none";
+    createUI.style.display = "";
+    formatUI.style.display = "";
+    passwordUI.style.display = "none";
+    runBtn.style.display = "none";
+    createBtn.style.display = "";
+    downloadBtn.style.display = "none";
+  }
+
+  modeSel.addEventListener("change", () => {
+    if (modeSel.value === "extract") showExtract();
+    else showCreate();
+    resetState();
+  });
+
+  formatSel.addEventListener("change", () => {
+    passwordUI.style.display = formatSel.value === "zip" ? "" : "none";
+  });
+
+  function wireDropZone(zone: HTMLElement, input: HTMLInputElement, onFiles: (files: FileList) => void) {
+    zone.addEventListener("click", () => input.click());
+    zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+    zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+    zone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      zone.classList.remove("drag");
+      if (e.dataTransfer?.files.length) onFiles(e.dataTransfer.files);
+    });
+    input.addEventListener("change", () => {
+      if (input.files.length) onFiles(input.files);
+      input.value = "";
+    });
+  }
+
+  wireDropZone(dropZone, fileInput, handleArchiveFile);
+  wireDropZone(createDropZone, createFileInput, handleCreateFiles);
+
+  async function handleArchiveFile(files: FileList) {
+    const file = files[0];
+    if (!file) return;
+    currentArchive = await file.arrayBuffer();
+    const format = detectFormat(file.name);
+    try {
+      const result = await readArchive(new Uint8Array(currentArchive), format);
+      currentEntries = result.entries;
+      renderPreview(result);
+      runBtn.disabled = false;
+      outBox.textContent = `Found ${result.entries.length} entries (${formatBytes(result.totalSize)})`;
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  }
+
+  function detectFormat(name: string): "zip" | "tar" | "gzip" {
+    const ext = name.toLowerCase().split(".").pop();
+    if (ext === "zip") return "zip";
+    if (ext === "tar") return "tar";
+    if (ext === "gz" || ext === "gzip" || ext === "tgz") return "gzip";
+    return "zip";
+  }
+
+  function handleCreateFiles(files: FileList) {
+    createCount.textContent = `${files.length} file${files.length !== 1 ? "s" : ""} selected`;
+    createBtn.disabled = files.length === 0;
+  }
+
+  function renderPreview(result: any) {
+    previewBox.style.display = "block";
+    previewBox.innerHTML = "";
+    selectedEntries.clear();
+
+    const table = document.createElement("table");
+    table.style.width = "100%";
+    table.style.borderCollapse = "collapse";
+    table.style.fontSize = "0.85rem";
+
+    const header = document.createElement("thead");
+    header.innerHTML = `<tr style="text-align:left;border-bottom:1px solid var(--border)">
+      <th style="padding:0.4rem;width:2rem"><input type="checkbox" data-select-all></th>
+      <th style="padding:0.4rem">Name</th>
+      <th style="padding:0.4rem;text-align:right">Size</th>
+      <th style="padding:0.4rem;text-align:right">Compressed</th>
+      <th style="padding:0.4rem">Modified</th>
+    </tr>`;
+    table.appendChild(header);
+
+    const body = document.createElement("tbody");
+    for (const entry of result.entries) {
+      const row = document.createElement("tr");
+      row.style.borderBottom = "1px solid var(--border)";
+      row.innerHTML = `
+        <td style="padding:0.4rem"><input type="checkbox" data-entry="${escapeHtml(entry.name)}" ${!entry.isDirectory ? "checked" : ""}></td>
+        <td style="padding:0.4rem;font-family:var(--mono)">${escapeHtml(entry.name)}${entry.isDirectory ? "/" : ""}</td>
+        <td style="padding:0.4rem;text-align:right">${formatBytes(entry.size)}</td>
+        <td style="padding:0.4rem;text-align:right">${entry.compressedSize !== undefined ? formatBytes(entry.compressedSize) : "-"}</td>
+        <td style="padding:0.4rem">${entry.lastModified ? entry.lastModified.toLocaleString() : "-"}</td>
+      `;
+      body.appendChild(row);
+    }
+    table.appendChild(body);
+    previewBox.appendChild(table);
+
+    const selectAll = previewBox.querySelector<HTMLInputElement>("[data-select-all]")!;
+    selectAll.addEventListener("change", () => {
+      const checked = selectAll.checked;
+      previewBox.querySelectorAll<HTMLInputElement>("[data-entry]").forEach(cb => {
+        cb.checked = checked;
+        const name = cb.getAttribute("data-entry")!;
+        if (checked) selectedEntries.add(name);
+        else selectedEntries.delete(name);
+      });
+    });
+
+    previewBox.querySelectorAll<HTMLInputElement>("[data-entry]").forEach(cb => {
+      cb.addEventListener("change", () => {
+        const name = cb.getAttribute("data-entry")!;
+        if (cb.checked) selectedEntries.add(name);
+        else selectedEntries.delete(name);
+        selectAll.checked = selectedEntries.size === currentEntries.filter(e => !e.isDirectory).length;
+      });
+    });
+
+    const nonDirCount = currentEntries.filter(e => !e.isDirectory).length;
+    selectAll.checked = nonDirCount > 0;
+    selectedEntries = new Set(currentEntries.filter(e => !e.isDirectory).map(e => e.name));
+  }
+
+  function escapeHtml(s: string) {
+    return s.replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">").replace(/"/g, "\"").replace(/'/g, "'");
+  }
+
+  runBtn.addEventListener("click", async () => {
+    if (!currentArchive) return;
+    const format = detectFormat(fileInput.files?.[0]?.name || "archive.zip");
+    runBtn.disabled = true;
+    runBtn.textContent = "Extracting...";
+    outBox.textContent = "";
+    outBox.className = "output-box";
+
+    try {
+      const files = await extractArchive({
+        format,
+        data: new Uint8Array(currentArchive),
+        password: passwordInput.value || undefined,
+        selectedEntries: Array.from(selectedEntries),
+      });
+
+      if (files.size === 1) {
+        const [name, data] = files.entries().next().value!;
+        downloadArrayBuffer(data, name);
+        outBox.textContent = `Extracted: ${name} (${formatBytes(data.length)})`;
+        outBox.className = "output-box ok-text";
+      } else {
+        const zipData = await createArchive({
+          format: "zip",
+          files: Array.from(files.entries()).map(([name, data]) => ({ name, data })),
+        });
+        downloadArrayBuffer(zipData, "extracted.zip");
+        outBox.textContent = `Extracted ${files.size} files → downloaded as extracted.zip`;
+        outBox.className = "output-box ok-text";
+      }
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    } finally {
+      runBtn.disabled = false;
+      runBtn.textContent = "Extract Selected";
+    }
+  });
+
+  createBtn.addEventListener("click", async () => {
+    const files = createFileInput.files;
+    if (!files.length) return;
+    createBtn.disabled = true;
+    createBtn.textContent = "Creating...";
+    outBox.textContent = "";
+    outBox.className = "output-box";
+
+    try {
+      const fileList = [];
+      for (const file of files) {
+        fileList.push({ name: file.name, data: new Uint8Array(await file.arrayBuffer()) });
+      }
+
+      const format = formatSel.value as "zip" | "tar" | "gzip";
+      const password = format === "zip" ? passwordInput.value : undefined;
+
+      createdArchive = await createArchive({ format, files: fileList, password, level: 6 });
+
+      const ext = format === "gzip" ? "gz" : format;
+      downloadBtn.style.display = "";
+      createBtn.style.display = "none";
+      outBox.textContent = `Archive created (${formatBytes(createdArchive.length)}). Click Download.`;
+      outBox.className = "output-box ok-text";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+      createBtn.disabled = false;
+      createBtn.textContent = "Create Archive";
+    }
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    if (!createdArchive) return;
+    const ext = formatSel.value === "gzip" ? "gz" : formatSel.value;
+    downloadArrayBuffer(createdArchive, `archive.${ext}`);
+    resetState();
+  });
+
+  function resetState() {
+    currentArchive = null;
+    currentEntries = [];
+    selectedEntries.clear();
+    createdArchive = null;
+    previewBox.style.display = "none";
+    previewBox.innerHTML = "";
+    outBox.textContent = "";
+    outBox.className = "output-box";
+    runBtn.disabled = true;
+    createBtn.disabled = true;
+    createBtn.style.display = "";
+    createBtn.textContent = "Create Archive";
+    downloadBtn.style.display = "none";
+    fileInput.value = "";
+    createFileInput.value = "";
+    createCount.textContent = "0 files selected";
+    passwordInput.value = "";
+  }
+
+  showExtract();
+</script>
+
+<style>
+  .drop-zone.drag { border-color: var(--accent); background: var(--accent-soft); }
+  table { font-family: var(--mono); }
+  input[type="checkbox"] { accent-color: var(--accent); }
+</style>

@@ -1,0 +1,214 @@
+---
+---
+<section class="stage">
+  <h2>EbookLoom</h2>
+  <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem">Convert EPUB to clean HTML, Markdown, or plain text. Preserves chapters, metadata, and images.</p>
+
+  <div class="field">
+    <span class="field-label">EPUB File</span>
+    <div class="drop-zone" data-zone>
+      <input type="file" class="input" style="display:none" accept=".epub" data-file />
+      <div class="dz-title">Drop EPUB or click to browse</div>
+      <div class="dz-hint">EPUB files only — max 100MB recommended</div>
+    </div>
+  </div>
+
+  <div class="field" data-options style="display:none">
+    <span class="field-label">Export Format</span>
+    <select class="input" data-format>
+      <option value="html">Single HTML file (with embedded images)</option>
+      <option value="markdown">Markdown</option>
+      <option value="text">Plain text</option>
+    </select>
+  </div>
+
+  <div class="field" data-options style="display:none">
+    <label class="input" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;padding:0.6rem 0.75rem">
+      <input type="checkbox" data-include-meta checked> Include metadata (title, author, etc.)
+    </label>
+  </div>
+
+  <div class="field" data-options style="display:none">
+    <label class="input" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;padding:0.6rem 0.75rem">
+      <input type="checkbox" data-include-cover checked> Include cover image
+    </label>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-convert style="display:none">Convert</button>
+    <button class="btn" data-download style="display:none">Download</button>
+  </div>
+
+  <div class="output-box" data-preview style="display:none;max-height:400px;overflow:auto"></div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { parseEpub, exportEpub, formatBytes } from "./tool.ts";
+  import { downloadText, downloadBlob } from "@/lib/download";
+
+  const dropZone = document.querySelector<HTMLElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const optionsDiv = document.querySelectorAll<HTMLElement>("[data-options]");
+  const formatSel = document.querySelector<HTMLSelectElement>("[data-format]")!;
+  const includeMeta = document.querySelector<HTMLInputElement>("[data-include-meta]")!;
+  const includeCover = document.querySelector<HTMLInputElement>("[data-include-cover]")!;
+  const convertBtn = document.querySelector<HTMLButtonElement>("[data-convert]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const previewBox = document.querySelector<HTMLElement>("[data-preview]")!;
+  const outBox = document.querySelector<HTMLElement>("[data-out]")!;
+
+  let epubResult: any = null;
+  let exportResult: string | { files: Map<string, string>; main: string } | null = null;
+
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("drag"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag"));
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("drag");
+    if (e.dataTransfer?.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files?.[0]) handleFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  async function handleFile(file: File) {
+    outBox.textContent = "Parsing EPUB...";
+    outBox.className = "output-box";
+    convertBtn.disabled = true;
+    convertBtn.style.display = "none";
+    downloadBtn.style.display = "none";
+    previewBox.style.display = "none";
+
+    try {
+      const data = new Uint8Array(await file.arrayBuffer());
+      epubResult = await parseEpub(data);
+
+      const broken = epubResult.chapters.filter((c: any) => c.broken).length;
+      const ok = epubResult.chapters.length - broken;
+
+      let msg = `Parsed: ${epubResult.metadata.title || "Unknown"} by ${epubResult.metadata.author || "Unknown"}\n`;
+      msg += `${ok} chapter${ok !== 1 ? "s" : ""} OK`;
+      if (broken) msg += `, ${broken} broken`;
+      msg += `\n${epubResult.warnings.length} warning${epubResult.warnings.length !== 1 ? "s" : ""}`;
+
+      outBox.textContent = msg;
+      outBox.className = "output-box ok-text";
+
+      optionsDiv.forEach(d => d.style.display = "");
+      convertBtn.style.display = "";
+      convertBtn.disabled = false;
+      convertBtn.textContent = "Convert";
+
+      renderPreview();
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  }
+
+  function renderPreview() {
+    if (!epubResult) return;
+    previewBox.style.display = "block";
+    previewBox.innerHTML = "";
+
+    const meta = epubResult.metadata;
+    const chapters = epubResult.chapters;
+
+    const div = document.createElement("div");
+    div.style.fontSize = "0.9rem";
+    div.innerHTML = `
+      <strong>${escapeHtml(meta.title || "Untitled")}</strong><br>
+      ${meta.author ? `By ${escapeHtml(meta.author)}<br>` : ""}
+      ${meta.language ? `Language: ${escapeHtml(meta.language)}<br>` : ""}
+      ${chapters.length} chapter${chapters.length !== 1 ? "s" : ""}
+      ${chapters.filter((c: any) => c.broken).length ? ` (${chapters.filter((c: any) => c.broken).length} broken)` : ""}
+    `;
+    previewBox.appendChild(div);
+
+    if (chapters.length > 0) {
+      const list = document.createElement("ul");
+      list.style.marginTop = "0.5rem";
+      list.style.maxHeight = "200px";
+      list.style.overflow = "auto";
+      chapters.slice(0, 20).forEach((c: any, i) => {
+        const li = document.createElement("li");
+        li.style.fontSize = "0.8rem";
+        li.style.fontFamily = "var(--mono)";
+        li.textContent = `${i + 1}. ${c.title || c.href} ${c.broken ? "⚠ broken" : ""}`;
+        if (c.broken) li.style.color = "var(--warn)";
+        list.appendChild(li);
+      });
+      if (chapters.length > 20) {
+        const li = document.createElement("li");
+        li.style.fontSize = "0.8rem";
+        li.style.color = "var(--muted)";
+        li.textContent = `... and ${chapters.length - 20} more`;
+        list.appendChild(li);
+      }
+      previewBox.appendChild(list);
+    }
+
+    if (epubResult.warnings.length) {
+      const warn = document.createElement("div");
+      warn.style.marginTop = "0.5rem";
+      warn.style.fontSize = "0.8rem";
+      warn.style.color = "var(--warn)";
+      warn.textContent = "Warnings: " + epubResult.warnings.slice(0, 3).join("; ") + (epubResult.warnings.length > 3 ? "..." : "");
+      previewBox.appendChild(warn);
+    }
+  }
+
+  function escapeHtml(s: string) {
+    return s.replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">").replace(/"/g, "\"").replace(/'/g, "'");
+  }
+
+  convertBtn.addEventListener("click", async () => {
+    if (!epubResult) return;
+    convertBtn.disabled = true;
+    convertBtn.textContent = "Converting...";
+    outBox.textContent = "";
+    outBox.className = "output-box";
+
+    try {
+      const opts = {
+        format: formatSel.value as "html" | "markdown" | "text",
+        includeMetadata: includeMeta.checked,
+        includeCover: includeCover.checked,
+        singleFile: true,
+        chapterSeparator: formatSel.value === "html" ? "" : "\n\n---\n\n",
+      };
+
+      exportResult = exportEpub(epubResult, opts);
+
+      const size = typeof exportResult === "string" ? new TextEncoder().encode(exportResult).length : 0;
+      outBox.textContent = `Converted to ${opts.format.toUpperCase()} (${formatBytes(size)}). Ready to download.`;
+      outBox.className = "output-box ok-text";
+      downloadBtn.style.display = "";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    } finally {
+      convertBtn.disabled = false;
+      convertBtn.textContent = "Convert";
+    }
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    if (!exportResult) return;
+    const format = formatSel.value;
+    const ext = format === "html" ? "html" : format === "markdown" ? "md" : "txt";
+    const filename = (epubResult?.metadata?.title || "ebook").replace(/[^a-z0-9]/gi, "_") + "." + ext;
+
+    if (typeof exportResult === "string") {
+      downloadText(exportResult, filename, format === "html" ? "text/html" : "text/plain");
+    }
+  });
+</script>
+
+<style>
+  .drop-zone.drag { border-color: var(--accent); background: var(--accent-soft); }
+</style>

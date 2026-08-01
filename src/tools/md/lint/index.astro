@@ -1,0 +1,61 @@
+---
+// mr.lint — markdown linter with auto-fix suggestions.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Markdown to lint</span>
+    <textarea class="input" rows="12" placeholder="Paste markdown to check…" data-input></textarea>
+  </label>
+  <div class="actions">
+    <button class="btn btn-primary" data-lint>Lint</button>
+    <button class="btn" data-fix>Auto-fix (trailing spaces)</button>
+    <button class="btn" data-copy>Copy Fixed</button>
+  </div>
+  <div class="output-box" data-output aria-live="polite"></div>
+  <div data-summary class="muted" style="margin-top:0.5rem"></div>
+</section>
+
+<script>
+  import { lintMarkdown, type LintResult } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const output = document.querySelector<HTMLDivElement>("[data-output]")!;
+  const summary = document.querySelector<HTMLDivElement>("[data-summary]")!;
+
+  let lastResult: LintResult | null = null;
+
+  function render(result: LintResult) {
+    lastResult = result;
+    const errors = result.issues.filter((i) => i.severity === "error").length;
+    const warnings = result.issues.filter((i) => i.severity === "warning").length;
+    const infos = result.issues.filter((i) => i.severity === "info").length;
+    summary.textContent = `${errors} error(s), ${warnings} warning(s), ${infos} info`;
+    output.innerHTML = result.issues
+      .map(
+        (i) =>
+          `<div style="margin:0.3rem 0;padding:0.3rem;background:var(--bg);border-radius:4px;font-size:0.85rem"><strong>Line ${i.line}</strong> [${i.severity}] ${i.rule}: ${i.message} ${i.fixable ? "✓ fixable" : ""}</div>`,
+      )
+      .join("");
+  }
+
+  document.querySelector("[data-lint]")!.addEventListener("click", () => {
+    render(lintMarkdown(input.value));
+  });
+
+  document.querySelector("[data-fix]")!.addEventListener("click", () => {
+    const result = lintMarkdown(input.value, true);
+    if (result.fixed) {
+      input.value = result.fixed;
+      render(result);
+    }
+  });
+
+  document.querySelector("[data-copy]")!.addEventListener("click", () => {
+    if (lastResult?.fixed) {
+      copyTextWithFeedback(lastResult.fixed, document.querySelector("[data-copy]") as HTMLButtonElement);
+    } else {
+      copyTextWithFeedback(input.value, document.querySelector("[data-copy]") as HTMLButtonElement);
+    }
+  });
+</script>

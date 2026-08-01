@@ -1,0 +1,235 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose CSV or XLSX file to anonymize">
+    <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-input hidden />
+    <span class="dz-title">Drop a CSV or XLSX file here or click to browse</span>
+    <span class="dz-hint">Detect and mask PII — emails, phones, names, IDs, and more.</span>
+  </div>
+
+  <fieldset class="field" data-options style="display:none;margin-top:1rem">
+    <legend class="field-label">Column profiles</legend>
+    <div data-profile-list style="max-height:350px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.5rem"></div>
+    <div class="muted" style="font-size:0.8rem;margin-top:0.5rem">
+      Select a PII type for each column. Profiles are saved in your browser for reuse.
+    </div>
+  </fieldset>
+
+  <div class="actions" style="margin-top:1rem">
+    <button type="button" class="btn btn-primary" data-run disabled>Anonymize</button>
+    <button type="button" class="btn" data-download-csv hidden>Download anonymized CSV</button>
+    <button type="button" class="btn" data-download-report hidden>Download report (txt)</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+
+  <details data-summary style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Summary</summary>
+    <div data-stats></div>
+  </details>
+
+  <details data-anomalies style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Masked values (first 100)</summary>
+    <div style="max-height:300px;overflow:auto;font-family:var(--mono);font-size:0.8rem" data-anomaly-list></div>
+  </details>
+</section>
+
+<script>
+  import { anonymize, generateReport } from "./tool.ts";
+  import { readFileAsArrayBuffer, readFileAsText, formatBytes, swapExtension, fileNameOf } from "@/lib/files";
+  import { downloadText } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const opts = document.querySelector<HTMLFieldSetElement>("[data-options]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const dlCsv = document.querySelector<HTMLButtonElement>("[data-download-csv]");
+  const dlReport = document.querySelector<HTMLButtonElement>("[data-download-report]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  const stats = document.querySelector<HTMLDivElement>("[data-stats]");
+  const anomalyList = document.querySelector<HTMLDivElement>("[data-anomaly-list]");
+  const profileList = document.querySelector<HTMLDivElement>("[data-profile-list]");
+
+  if (!zone || !input || !opts || !run || !dlCsv || !dlReport || !out || !stats ||
+      !anomalyList || !profileList) {
+    throw new Error("mr anon mount failed");
+  }
+
+  const PII_TYPES = [
+    { value: "none", label: "— No masking —" },
+    { value: "email", label: "Email" },
+    { value: "phone", label: "Phone number" },
+    { value: "name", label: "Full name" },
+    { value: "id", label: "ID / Account number" },
+    { value: "address", label: "Address" },
+    { value: "ssn", label: "SSN (XXX-XX-XXXX)" },
+    { value: "credit-card", label: "Credit card" },
+  ];
+
+  let file: File | null = null;
+  let isXlsx = false;
+  let headers: string[] = [];
+  let lastResult: Awaited<ReturnType<typeof anonymize>> | null = null;
+  let profiles: Record<string, string> = {};
+
+  const loadProfiles = () => {
+    try {
+      const stored = localStorage.getItem("mr-anon-profiles");
+      if (stored) profiles = JSON.parse(stored);
+    } catch { }
+  };
+
+  const saveProfiles = () => {
+    try {
+      localStorage.setItem("mr-anon-profiles", JSON.stringify(profiles));
+    } catch { }
+  };
+
+  const buildProfilesUI = () => {
+    profileList.innerHTML = "";
+    for (const h of headers) {
+      const wrap = document.createElement("label");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.gap = "0.5rem";
+      wrap.style.margin = "0.3rem 0";
+      const saved = profiles[h] || "none";
+      wrap.innerHTML = `
+        <span style="width:180px;font-size:0.85rem">${h}</span>
+        <select class="input" style="flex:1;max-width:220px" data-profile="${h}">
+          ${PII_TYPES.map(t => `<option value="${t.value}" ${t.value === saved ? "selected" : ""}>${t.label}</option>`).join("")}
+        </select>
+      `;
+      profileList.appendChild(wrap);
+    }
+  };
+
+  const getProfiles = () => {
+    const result: { column: string; type: "email" | "phone" | "name" | "id" | "address" | "ssn" | "credit-card" | "custom" | "none"; preserveDomain?: boolean; preserveFormat?: boolean }[] = [];
+    for (const h of headers) {
+      const sel = profileList.querySelector<HTMLSelectElement>(`[data-profile="${h}"]`);
+      if (sel && sel.value !== "none") {
+        result.push({ column: h, type: sel.value as any, preserveDomain: sel.value === "email", preserveFormat: sel.value === "phone" });
+        profiles[h] = sel.value;
+      } else {
+        profiles[h] = "none";
+      }
+    }
+    saveProfiles();
+    return result;
+  };
+
+  const addFile = async (f: File) => {
+    file = f;
+    isXlsx = f.name.toLowerCase().endsWith(".xlsx") || f.type.includes("spreadsheetml");
+    opts.style.display = "";
+    run.disabled = false;
+    out.textContent = `Ready: ${f.name} (${formatBytes(f.size)})`;
+    stats.textContent = "";
+    anomalyList.textContent = "";
+    dlCsv.hidden = dlReport.hidden = true;
+    lastResult = null;
+
+    try {
+      if (isXlsx) {
+        const buf = await readFileAsArrayBuffer(f);
+        const XLSX = await import("xlsx");
+        const wb = XLSX.read(buf, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as string[][];
+        headers = json[0] || [];
+      } else {
+        const text = await readFileAsText(f);
+        const lines = text.split(/\r?\n/);
+        const firstLine = lines[0] || "";
+        const delim = [",", "\t", ";", "|"].find(d => firstLine.includes(d)) || ",";
+        headers = firstLine.split(delim).map(h => h.replace(/^"|"$/g, "").trim());
+      }
+      loadProfiles();
+      buildProfilesUI();
+    } catch {
+      out.innerHTML = '<div class="error-text">Failed to read file.</div>';
+      run.disabled = true;
+    }
+  };
+
+  const renderStats = (result: Awaited<ReturnType<typeof anonymize>>) => {
+    const { stats } = result;
+    stats.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.5rem;margin-top:0.5rem">
+        <div class="output-box" style="margin:0"><div class="field-label">Columns processed</div><div>${stats.columnsProcessed}</div></div>
+        <div class="output-box" style="margin:0"><div class="field-label">Total cells</div><div>${stats.totalCells}</div></div>
+        <div class="output-box" style="margin:0"><div class="field-label">Cells masked</div><div>${stats.maskedCells}</div></div>
+      </div>
+    `;
+  };
+
+  const renderAnomalies = (result: Awaited<ReturnType<typeof anonymize>>) => {
+    if (result.anomalies.length === 0) {
+      anomalyList.textContent = "No PII detected or all columns set to 'No masking'.";
+      return;
+    }
+    const byType = new Map<string, typeof result.anomalies>();
+    for (const a of result.anomalies) {
+      if (!byType.has(a.type)) byType.set(a.type, []);
+      byType.get(a.type)!.push(a);
+    }
+    let html = "";
+    for (const [type, items] of byType) {
+      html += `<div style="margin:0.5rem 0"><strong>${type.toUpperCase()}</strong> (${items.length})<br>`;
+      for (const a of items.slice(0, 100)) {
+        html += `<div style="margin-left:1rem">Row ${a.row + 1}, ${a.colName}: "${a.original}" → "${a.masked}"</div>`;
+      }
+      if (items.length > 100) html += `<div style="margin-left:1rem;color:var(--muted)">... and ${items.length - 100} more</div>`;
+      html += `</div>`;
+    }
+    anomalyList.innerHTML = html;
+  };
+
+  const doAnon = async () => {
+    if (!file) return;
+    run.disabled = true;
+    out.textContent = "Anonymizing…";
+    try {
+      let data: string | Uint8Array;
+      if (isXlsx) data = await readFileAsArrayBuffer(file);
+      else data = await readFileAsText(file);
+
+      const profileConfigs = getProfiles();
+      lastResult = await anonymize(data, isXlsx, { profiles: profileConfigs, customPatterns: [] });
+      renderStats(lastResult);
+      renderAnomalies(lastResult);
+      out.textContent = `Done: ${lastResult.stats.maskedCells} cells masked across ${lastResult.stats.columnsProcessed} columns.`;
+      dlCsv.hidden = dlReport.hidden = false;
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Anonymization failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = !file;
+    }
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  input.addEventListener("change", () => { if (input.files?.[0]) addFile(input.files[0]); input.value = ""; });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("drag"); if (e.dataTransfer?.files?.[0]) addFile(e.dataTransfer.files[0]); });
+
+  run.addEventListener("click", doAnon);
+
+  dlCsv.addEventListener("click", () => {
+    if (lastResult && file) {
+      const csv = lastResult.headers.join(",") + "\n" +
+        lastResult.rows.map(r => r.map(c => c.includes(",") || c.includes('"') || c.includes("\n") ? '"' + c.replace(/"/g, '""') + '"' : c).join(",")).join("\n");
+      downloadText(csv, swapExtension(fileNameOf(file), "csv"), "text/csv");
+    }
+  });
+
+  dlReport.addEventListener("click", () => {
+    if (lastResult && file) downloadText(generateReport(lastResult), swapExtension(fileNameOf(file), "txt"), "text/plain");
+  });
+</script>

@@ -1,0 +1,167 @@
+---
+// mr encode — EncodeDeck. Live two-way encoding/decoding.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Mode</span>
+    <select class="input" data-mode>
+      <option value="encode">Encode (plain → encoded)</option>
+      <option value="decode">Decode (encoded → plain)</option>
+    </select>
+  </div>
+
+  <div class="field" data-encode-field>
+    <span class="field-label">Input Text</span>
+    <textarea class="input" rows="6" placeholder="Paste or type text to encode…" data-encode-input></textarea>
+  </div>
+
+  <div class="field" data-decode-field style="display: none;">
+    <span class="field-label">Encoded Input</span>
+    <textarea class="input" rows="6" placeholder="Paste encoded text to decode…" data-decode-input></textarea>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-run>Run</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));" data-results></div>
+
+  <output class="output-box error-text" data-error style="display: none;"></output>
+</section>
+
+<script>
+  import {
+    encodeAll,
+    decodeAll,
+    encodeBase64,
+    decodeBase64,
+    encodeUrl,
+    decodeUrl,
+    encodeHtmlEntities,
+    decodeHtmlEntities,
+    encodeUnicodeEscapes,
+    decodeUnicodeEscapes,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const modeSelect = document.querySelector<HTMLSelectElement>("[data-mode]")!;
+  const encodeField = document.querySelector<HTMLDivElement>("[data-encode-field]")!;
+  const decodeField = document.querySelector<HTMLDivElement>("[data-decode-field]")!;
+  const encodeInput = document.querySelector<HTMLTextAreaElement>("[data-encode-input]")!;
+  const decodeInput = document.querySelector<HTMLTextAreaElement>("[data-decode-input]")!;
+  const runBtn = document.querySelector<HTMLButtonElement>("[data-run]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const results = document.querySelector<HTMLDivElement>("[data-results]")!;
+  const errorBox = document.querySelector<HTMLOutputElement>("[data-error]")!;
+
+  if (!modeSelect || !encodeField || !decodeField || !encodeInput || !decodeInput || !runBtn || !clearBtn || !results || !errorBox) {
+    throw new Error("mr encode mount failed");
+  }
+
+  let encodeDebounce: number;
+  let decodeDebounce: number;
+
+  function showError(msg: string) {
+    errorBox.textContent = msg;
+    errorBox.style.display = "block";
+  }
+
+  function clearError() {
+    errorBox.textContent = "";
+    errorBox.style.display = "none";
+  }
+
+  function updateUI() {
+    const isEncode = modeSelect.value === "encode";
+    encodeField.style.display = isEncode ? "block" : "none";
+    decodeField.style.display = isEncode ? "none" : "block";
+    clearError();
+    results.innerHTML = "";
+  }
+
+  modeSelect.addEventListener("change", updateUI);
+
+  function runEncode() {
+    clearError();
+    const text = encodeInput.value;
+    if (!text) {
+      showError("Enter some text to encode");
+      return;
+    }
+    const encoded = encodeAll(text);
+    renderResults(encoded);
+  }
+
+  function runDecode() {
+    clearError();
+    const text = decodeInput.value;
+    if (!text) {
+      showError("Enter some encoded text to decode");
+      return;
+    }
+    const decoded = decodeAll(text);
+    renderResults(decoded);
+  }
+
+  function renderResults(items: { type: string; value: string }[]) {
+    results.innerHTML = "";
+    for (const item of items) {
+      const card = document.createElement("div");
+      card.className = "output-box";
+      card.style.margin = "0";
+
+      const name = document.createElement("div");
+      name.className = "field-label";
+      name.textContent = item.type;
+
+      const pre = document.createElement("div");
+      pre.textContent = item.value;
+      pre.style.fontFamily = "var(--mono)";
+      pre.style.wordBreak = "break-all";
+      pre.style.whiteSpace = "pre-wrap";
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.textContent = "Copy";
+      btn.style.marginTop = "0.5rem";
+      btn.addEventListener("click", () => copyTextWithFeedback(item.value, btn));
+
+      card.append(name, pre, btn);
+      results.appendChild(card);
+    }
+  }
+
+  function clearAll() {
+    encodeInput.value = "";
+    decodeInput.value = "";
+    results.innerHTML = "";
+    clearError();
+  }
+
+  runBtn.addEventListener("click", () => {
+    if (modeSelect.value === "encode") runEncode();
+    else runDecode();
+  });
+
+  clearBtn.addEventListener("click", clearAll);
+
+  // Instant results for encode
+  encodeInput.addEventListener("input", () => {
+    clearTimeout(encodeDebounce);
+    encodeDebounce = window.setTimeout(() => {
+      if (modeSelect.value === "encode" && encodeInput.value.trim()) runEncode();
+    }, 200);
+  });
+
+  // Instant results for decode
+  decodeInput.addEventListener("input", () => {
+    clearTimeout(decodeDebounce);
+    decodeDebounce = window.setTimeout(() => {
+      if (modeSelect.value === "decode" && decodeInput.value.trim()) runDecode();
+    }, 200);
+  });
+
+  updateUI();
+</script>

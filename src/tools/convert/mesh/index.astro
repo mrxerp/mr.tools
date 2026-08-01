@@ -1,0 +1,242 @@
+---
+---
+<section class="stage">
+  <h2>MeshMill</h2>
+  <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem">Convert 3D: STL, OBJ, PLY, GLTF. Report triangle counts, fix normals, live preview.</p>
+
+  <div class="field">
+    <span class="field-label">Format</span>
+    <select class="input" data-input-format>
+      <option value="stl">STL</option>
+      <option value="obj">OBJ</option>
+      <option value="ply">PLY</option>
+      <option value="gltf">GLTF (JSON)</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <span class="field-label">File</span>
+    <div class="drop-zone" data-zone>
+      <input type="file" class="input" style="display:none" accept=".stl,.obj,.ply,.gltf,.json" data-file />
+      <div class="dz-title">Drop 3D file or click to browse</div>
+      <div class="dz-hint">STL, OBJ, PLY, GLTF — max 50MB recommended</div>
+    </div>
+  </div>
+
+  <div class="field" data-convert-ui style="display:none">
+    <span class="field-label">Output Format</span>
+    <select class="input" data-output-format>
+      <option value="stl">STL (binary)</option>
+      <option value="obj">OBJ</option>
+      <option value="ply">PLY (ASCII)</option>
+      <option value="gltf">GLTF (JSON)</option>
+    </select>
+  </div>
+
+  <div class="field" data-convert-ui style="display:none">
+    <label class="input" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;padding:0.6rem 0.75rem">
+      <input type="checkbox" data-repair checked> Auto-repair (dedupe vertices, fix normals)
+    </label>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-convert style="display:none">Convert</button>
+    <button class="btn" data-download style="display:none">Download</button>
+  </div>
+
+  <div class="output-box" data-preview style="display:none;max-height:300px;overflow:auto"></div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { parseMesh, writeMesh, formatBytes } from "./tool.ts";
+  import { downloadArrayBuffer, downloadText } from "@/lib/download";
+
+  const inputFormatSel = document.querySelector<HTMLSelectElement>("[data-input-format]")!;
+  const outputFormatSel = document.querySelector<HTMLSelectElement>("[data-output-format]")!;
+  const zone = document.querySelector<HTMLElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const convertUi = document.querySelectorAll<HTMLElement>("[data-convert-ui]");
+  const convertBtn = document.querySelector<HTMLButtonElement>("[data-convert]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const repairCheckbox = document.querySelector<HTMLInputElement>("[data-repair]")!;
+  const previewBox = document.querySelector<HTMLElement>("[data-preview]")!;
+  const outBox = document.querySelector<HTMLElement>("[data-out]")!;
+
+  let parsedMesh: any = null;
+  let convertedData: Uint8Array | string | null = null;
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer?.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files?.[0]) handleFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  async function handleFile(file: File) {
+    convertBtn.disabled = true;
+    convertBtn.style.display = "none";
+    downloadBtn.style.display = "none";
+    previewBox.style.display = "none";
+    convertUi.forEach(el => el.style.display = "none");
+
+    outBox.textContent = "Parsing mesh...";
+    outBox.className = "output-box";
+
+    try {
+      const data = new Uint8Array(await file.arrayBuffer());
+      const format = inputFormatSel.value as "stl" | "obj" | "ply" | "gltf";
+      const result = parseMesh(data, format);
+
+      parsedMesh = result.mesh;
+
+      let msg = `Mesh: ${result.mesh.vertices.length} vertices, ${result.mesh.triangleCount} triangles`;
+      msg += `\nBounds: X ${result.mesh.bounds.minX.toFixed(2)}-${result.mesh.bounds.maxX.toFixed(2)}, Y ${result.mesh.bounds.minY.toFixed(2)}-${result.mesh.bounds.maxY.toFixed(2)}, Z ${result.mesh.bounds.minZ.toFixed(2)}-${result.mesh.bounds.maxZ.toFixed(2)}`;
+
+      if (result.warnings.length) msg += `\nWarnings: ${result.warnings.join("; ")}`;
+      if (result.repairs.length) msg += `\nRepairs: ${result.repairs.join("; ")}`;
+
+      outBox.textContent = msg;
+      outBox.className = "output-box ok-text";
+
+      convertUi.forEach(el => el.style.display = "");
+      convertBtn.style.display = "";
+      convertBtn.disabled = false;
+      convertBtn.textContent = "Convert";
+
+      renderPreview();
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  }
+
+  function renderPreview() {
+    if (!parsedMesh) return;
+    previewBox.style.display = "block";
+    previewBox.innerHTML = "";
+
+    const m = parsedMesh;
+    const div = document.createElement("div");
+    div.style.fontSize = "0.9rem";
+    div.style.fontFamily = "var(--mono)";
+    div.innerHTML = `
+      Vertices: ${m.vertices.length}<br>
+      Triangles: ${m.triangleCount}<br>
+      Bounds: [${m.bounds.minX.toFixed(2)}, ${m.bounds.maxX.toFixed(2)}] × [${m.bounds.minY.toFixed(2)}, ${m.bounds.maxY.toFixed(2)}] × [${m.bounds.minZ.toFixed(2)}, ${m.bounds.maxZ.toFixed(2)}]<br>
+      Format: ${m.format.toUpperCase()}
+    `;
+    previewBox.appendChild(div);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 300;
+    canvas.height = 200;
+    canvas.style.marginTop = "0.5rem";
+    canvas.style.border = "1px solid var(--border)";
+    canvas.style.borderRadius = "var(--radius-sm)";
+    previewBox.appendChild(canvas);
+
+    drawWireframe(canvas, m);
+  }
+
+  function drawWireframe(canvas: HTMLCanvasElement, mesh: any) {
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const vertices = mesh.vertices;
+    const faces = mesh.faces;
+
+    if (vertices.length === 0 || faces.length === 0) return;
+
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    for (const v of vertices) {
+      minX = Math.min(minX, v.x);
+      maxX = Math.max(maxX, v.x);
+      minY = Math.min(minY, v.y);
+      maxY = Math.max(maxY, v.y);
+    }
+
+    const scale = Math.min(
+      (canvas.width - 40) / (maxX - minX || 1),
+      (canvas.height - 40) / (maxY - minY || 1)
+    );
+
+    const offsetX = (canvas.width - (maxX - minX) * scale) / 2;
+    const offsetY = (canvas.height - (maxY - minY) * scale) / 2;
+
+    ctx.strokeStyle = "var(--accent)";
+    ctx.lineWidth = 1;
+
+    ctx.beginPath();
+    for (const face of faces) {
+      const v0 = vertices[face.a];
+      const v1 = vertices[face.b];
+      const v2 = vertices[face.c];
+
+      const x0 = v0.x * scale + offsetX;
+      const y0 = v0.y * scale + offsetY;
+      const x1 = v1.x * scale + offsetX;
+      const y1 = v1.y * scale + offsetY;
+      const x2 = v2.x * scale + offsetX;
+      const y2 = v2.y * scale + offsetY;
+
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.lineTo(x0, y0);
+    }
+    ctx.stroke();
+  }
+
+  convertBtn.addEventListener("click", () => {
+    if (!parsedMesh) return;
+    convertBtn.disabled = true;
+    convertBtn.textContent = "Converting...";
+    outBox.textContent = "";
+    outBox.className = "output-box";
+
+    try {
+      const format = outputFormatSel.value as "stl" | "obj" | "ply" | "gltf";
+      convertedData = writeMesh(parsedMesh, format);
+
+      if (typeof convertedData === "string") {
+        downloadBtn.style.display = "";
+        outBox.textContent = `Converted to ${format.toUpperCase()} (${formatBytes(convertedData.length)}). Ready to download.`;
+      } else {
+        downloadBtn.style.display = "";
+        outBox.textContent = `Converted to ${format.toUpperCase()} (${formatBytes(convertedData.byteLength)}). Ready to download.`;
+      }
+      outBox.className = "output-box ok-text";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    } finally {
+      convertBtn.disabled = false;
+      convertBtn.textContent = "Convert";
+    }
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    if (!convertedData) return;
+    const format = outputFormatSel.value;
+    const ext = format === "gltf" ? "gltf" : format;
+    if (typeof convertedData === "string") {
+      downloadText(convertedData, `mesh.${ext}`, "text/plain");
+    } else {
+      downloadArrayBuffer(convertedData, `mesh.${ext}`);
+    }
+  });
+</script>
+
+<style>
+  .drop-zone.drag { border-color: var(--accent); background: var(--accent-soft); }
+</style>

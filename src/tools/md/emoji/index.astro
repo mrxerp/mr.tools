@@ -1,0 +1,79 @@
+---
+// mr.emoji — bidirectional emoji shortcode ↔ unicode converter.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Text with shortcodes or unicode</span>
+    <textarea class="input" rows="6" placeholder="Paste text with :shortcodes: or unicode emoji…" data-input></textarea>
+  </label>
+  <div class="actions">
+    <button class="btn btn-primary" data-to-unicode>Shortcodes → Unicode</button>
+    <button class="btn" data-to-shortcode>Unicode → Shortcodes</button>
+    <button class="btn" data-copy>Copy Result</button>
+  </div>
+  <div class="output-box" data-output aria-live="polite"></div>
+  <div class="section-title">Searchable Emoji Library</div>
+  <label class="field">
+    <span class="field-label">Search</span>
+    <input class="input" type="search" placeholder="Search emoji (e.g. rocket, heart, cat)…" data-search>
+  </label>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:0.5rem" data-library></div>
+</section>
+
+<script>
+  import {
+    shortcodeToUnicode,
+    unicodeToShortcode,
+    searchEmoji,
+    getAllEmoji,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const output = document.querySelector<HTMLDivElement>("[data-output]")!;
+  const search = document.querySelector<HTMLInputElement>("[data-search]")!;
+  const library = document.querySelector<HTMLDivElement>("[data-library]")!;
+
+  function renderOutput(text: string) {
+    output.textContent = text;
+  }
+
+  document.querySelector("[data-to-unicode]")!.addEventListener("click", () => {
+    renderOutput(shortcodeToUnicode(input.value));
+  });
+
+  document.querySelector("[data-to-shortcode]")!.addEventListener("click", () => {
+    renderOutput(unicodeToShortcode(input.value));
+  });
+
+  document.querySelector("[data-copy]")!.addEventListener("click", () => {
+    copyTextWithFeedback(output.textContent, document.querySelector("[data-copy]") as HTMLButtonElement);
+  });
+
+  function renderLibrary(emojis: Array<{ shortcode: string; unicode: string }>) {
+    library.innerHTML = "";
+    for (const { shortcode, unicode } of emojis) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.style.padding = "0.4rem";
+      btn.style.fontSize = "1.2rem";
+      btn.textContent = unicode;
+      btn.title = `:${shortcode}:`;
+      btn.addEventListener("click", () => {
+        const at = input.selectionStart;
+        const val = input.value;
+        input.value = val.slice(0, at) + `:${shortcode}:` + val.slice(at);
+        input.focus();
+      });
+      library.appendChild(btn);
+    }
+  }
+
+  search.addEventListener("input", () => {
+    const results = searchEmoji(search.value);
+    renderLibrary(results);
+  });
+
+  renderLibrary(getAllEmoji().slice(0, 100));
+</script>

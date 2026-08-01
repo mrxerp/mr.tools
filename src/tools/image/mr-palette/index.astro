@@ -1,0 +1,159 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button">
+    <input type="file" accept="image/*" data-file hidden />
+    <div class="dz-title">Drop an image or click to browse</div>
+    <div class="dz-hint">PNG, JPEG, or WebP — nothing uploads.</div>
+  </div>
+
+  <div class="grid" data-controls style="display:none;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+    <label class="field">
+      <span class="field-label">Colors: <span data-count-value>6</span></span>
+      <input class="input" type="range" min="3" max="12" step="1" value="6" data-count />
+    </label>
+  </div>
+
+  <div class="grid" data-results style="display:none;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+    <div data-swatches></div>
+  </div>
+
+  <div class="actions" data-actions style="display:none">
+    <button class="btn" type="button" data-copy>Copy all hex codes</button>
+  </div>
+  <p class="error-text" data-error style="display:none"></p>
+</section>
+
+<style>
+  [data-swatches] {
+    display: contents;
+  }
+  .swatch {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    background: var(--surface);
+    cursor: pointer;
+  }
+  .swatch-color {
+    height: 4.5rem;
+  }
+  .swatch-info {
+    padding: 0.45rem 0.6rem;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    display: flex;
+    justify-content: space-between;
+    gap: 0.4rem;
+  }
+</style>
+
+<script>
+  import { opaquePixels, samplePixels, paletteWithShare, rgbToHex } from "./tool.ts";
+  import { loadImageBitmap, imageDataOf } from "../_lib.ts";
+  import { copyText } from "@/lib/clipboard";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const countInput = document.querySelector<HTMLInputElement>("[data-count]")!;
+  const countValue = document.querySelector<HTMLSpanElement>("[data-count-value]")!;
+  const controls = document.querySelector<HTMLDivElement>("[data-controls]")!;
+  const swatches = document.querySelector<HTMLDivElement>("[data-swatches]")!;
+  const actions = document.querySelector<HTMLDivElement>("[data-actions]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
+
+  let bitmap: ImageBitmap | null = null;
+  let lastHexes: string[] = [];
+  const canvas = document.createElement("canvas");
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) load(file);
+    fileInput.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) load(file);
+  });
+
+  function setError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+
+  async function load(file: File) {
+    setError("");
+    try {
+      const img = await loadImageBitmap(file);
+      bitmap = img.bitmap;
+      controls.style.display = "";
+      render();
+    } catch {
+      setError("Could not read that file as an image.");
+    }
+  }
+
+  function render() {
+    if (!bitmap) return;
+    setError("");
+    const count = countInput.valueAsNumber;
+    countValue.textContent = String(count);
+    const data = imageDataOf(canvas, bitmap);
+    const pixels = samplePixels(opaquePixels(data.data), 40000);
+    const entries = paletteWithShare(pixels, count);
+    lastHexes = entries.map((e) => rgbToHex(e.color));
+    swatches.innerHTML = "";
+    for (const entry of entries) {
+      const hex = rgbToHex(entry.color);
+      const swatch = document.createElement("div");
+      swatch.className = "swatch";
+      const color = document.createElement("div");
+      color.className = "swatch-color";
+      color.style.background = hex;
+      const info = document.createElement("div");
+      info.className = "swatch-info";
+      const code = document.createElement("span");
+      code.textContent = hex;
+      const share = document.createElement("span");
+      share.textContent = `${entry.share}%`;
+      info.append(code, share);
+      swatch.append(color, info);
+      swatch.addEventListener("click", async () => {
+        const prev = code.textContent;
+        code.textContent = (await copyText(hex)) ? "Copied!" : "Copy failed";
+        setTimeout(() => {
+          code.textContent = prev;
+        }, 1200);
+      });
+      swatches.appendChild(swatch);
+    }
+    actions.style.display = "";
+  }
+
+  countInput.addEventListener("input", render);
+
+  copyBtn.addEventListener("click", async () => {
+    if (lastHexes.length === 0) return;
+    const text = lastHexes.join(", ");
+    const ok = await copyText(text);
+    copyBtn.textContent = ok ? "Copied" : "Copy failed";
+    setTimeout(() => {
+      copyBtn.textContent = "Copy all hex codes";
+    }, 1200);
+  });
+</script>

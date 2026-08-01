@@ -1,0 +1,250 @@
+<section class="stage">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+    <div class="drop-zone" data-zone-a tabindex="0" role="button" aria-label="Choose the original PDF">
+      <input type="file" accept="application/pdf" data-input-a hidden />
+      <span class="dz-title">Original PDF</span>
+      <span class="dz-hint" data-name-a>Drop it here or click to browse</span>
+    </div>
+    <div class="drop-zone" data-zone-b tabindex="0" role="button" aria-label="Choose the changed PDF">
+      <input type="file" accept="application/pdf" data-input-b hidden />
+      <span class="dz-title">Changed PDF</span>
+      <span class="dz-hint" data-name-b>Drop it here or click to browse</span>
+    </div>
+  </div>
+
+  <label class="field">
+    <span class="field-label">Render scale</span>
+    <select class="input" data-scale>
+      <option value="1">100%</option>
+      <option value="1.5" selected>150%</option>
+      <option value="2">200%</option>
+    </select>
+  </label>
+
+  <div class="actions">
+    <button type="button" class="btn btn-primary" data-run disabled>Compare pages</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+
+  <div data-results></div>
+</section>
+
+<style>
+  .diff-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.8rem;
+    margin-block: 1rem 2rem;
+  }
+  .diff-row .col-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 0.35rem;
+  }
+  .diff-row canvas {
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fff;
+  }
+  .diff-stats {
+    font-size: 0.82rem;
+    font-family: var(--mono);
+    color: var(--muted);
+    margin: 0.2rem 0 0.8rem;
+  }
+  @media (max-width: 640px) {
+    .diff-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<script>
+  import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+  import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
+  import { pixelStats, differenceMask, overlayChanges } from "./tool.ts";
+  import { readFileAsArrayBuffer, formatBytes } from "@/lib/files";
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+  const zoneA = document.querySelector<HTMLDivElement>("[data-zone-a]");
+  const inputA = document.querySelector<HTMLInputElement>("[data-input-a]");
+  const nameA = document.querySelector<HTMLElement>("[data-name-a]");
+  const zoneB = document.querySelector<HTMLDivElement>("[data-zone-b]");
+  const inputB = document.querySelector<HTMLInputElement>("[data-input-b]");
+  const nameB = document.querySelector<HTMLElement>("[data-name-b]");
+  const scale = document.querySelector<HTMLSelectElement>("[data-scale]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  const results = document.querySelector<HTMLDivElement>("[data-results]");
+  if (!zoneA || !inputA || !nameA || !zoneB || !inputB || !nameB || !scale || !run || !out || !results)
+    throw new Error("mr diff mount failed");
+
+  let fileA: File | null = null;
+  let fileB: File | null = null;
+
+  const sync = () => {
+    run.disabled = !fileA || !fileB;
+    nameA.textContent = fileA ? fileA.name : "Drop it here or click to browse";
+    nameB.textContent = fileB ? fileB.name : "Drop it here or click to browse";
+  };
+
+  const wireZone = (
+    zone: HTMLDivElement,
+    input: HTMLInputElement,
+    set: (file: File | null) => void,
+  ) => {
+    zone.addEventListener("click", () => input.click());
+    zone.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        input.click();
+      }
+    });
+    input.addEventListener("change", () => {
+      const file = input.files?.[0] ?? null;
+      const ok =
+        file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))
+          ? file
+          : null;
+      set(ok);
+      input.value = "";
+      sync();
+    });
+    zone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      zone.classList.add("drag");
+    });
+    zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+    zone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      zone.classList.remove("drag");
+      const file = e.dataTransfer?.files?.[0] ?? null;
+      const ok =
+        file && (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"))
+          ? file
+          : null;
+      set(ok);
+      sync();
+    });
+  };
+
+  wireZone(zoneA, inputA, (f) => (fileA = f));
+  wireZone(zoneB, inputB, (f) => (fileB = f));
+
+  async function renderPages(bytes: ArrayBuffer, scale: number): Promise<HTMLCanvasElement[]> {
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes) }).promise;
+    const canvases: HTMLCanvasElement[] = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas 2D is not available in this browser.");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      canvases.push(canvas);
+    }
+    await pdf.destroy();
+    return canvases;
+  }
+
+  function pix(canvas: HTMLCanvasElement): Uint8ClampedArray {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas 2D is not available in this browser.");
+    return ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  }
+
+  run.addEventListener("click", async () => {
+    if (!fileA || !fileB) return;
+    run.disabled = true;
+    out.textContent = "Rendering and comparing…";
+    try {
+      const [bytesA, bytesB] = await Promise.all([readFileAsArrayBuffer(fileA), readFileAsArrayBuffer(fileB)]);
+      const s = Number(scale.value);
+      const [pagesA, pagesB] = await Promise.all([renderPages(bytesA, s), renderPages(bytesB, s)]);
+
+      results.textContent = "";
+      const max = Math.max(pagesA.length, pagesB.length);
+      let compared = 0;
+      let changedPages = 0;
+      for (let i = 0; i < max; i++) {
+        const a = pagesA[i];
+        const b = pagesB[i];
+        const row = document.createElement("div");
+        row.className = "diff-row";
+        const title = document.createElement("div");
+        title.className = "col-title";
+        title.textContent = `Page ${i + 1}`;
+        row.appendChild(title);
+        if (!a || !b) {
+          const note = document.createElement("p");
+          note.className = "diff-stats";
+          note.textContent = a ? "Only in the original PDF." : "Only in the changed PDF.";
+          row.append(a ? a : document.createElement("div"), note, b ? b : document.createElement("div"));
+          results.appendChild(row);
+          continue;
+        }
+        if (a.width !== b.width || a.height !== b.height) {
+          const note = document.createElement("p");
+          note.textContent = "Page sizes differ — the two pages can't be pixel-compared at this scale.";
+          note.className = "diff-stats";
+          row.append(a, note, b);
+          results.appendChild(row);
+          continue;
+        }
+        const dataA = pix(a);
+        const dataB = pix(b);
+        const stats = pixelStats(dataA, dataB);
+        compared++;
+        if (stats.changed > 0) changedPages++;
+
+        const diff = document.createElement("canvas");
+        diff.width = a.width;
+        diff.height = a.height;
+        const dctx = diff.getContext("2d");
+        if (!dctx) throw new Error("Canvas 2D is not available in this browser.");
+        const overlay = overlayChanges(dataA, differenceMask(dataA, dataB));
+        dctx.putImageData(new ImageData(overlay as Uint8ClampedArray<ArrayBuffer>, a.width, a.height), 0, 0);
+
+        const titleA = document.createElement("div");
+        titleA.className = "col-title";
+        titleA.textContent = `Page ${i + 1} · original`;
+        const titleDiff = document.createElement("div");
+        titleDiff.className = "col-title";
+        titleDiff.textContent = "differences highlighted";
+        const titleB = document.createElement("div");
+        titleB.className = "col-title";
+        titleB.textContent = `changed`;
+        const statsEl = document.createElement("p");
+        statsEl.className = "diff-stats";
+        statsEl.textContent = `${formatBytes(dataA.length)} · ${stats.pct.toFixed(2)}% of pixels changed (${stats.changed} px)`;
+        row.append(titleA, a, titleDiff, diff, titleB, b, statsEl);
+        results.appendChild(row);
+      }
+
+      const extra = max - compared;
+      const lines: string[] = [];
+      lines.push(`Compared ${compared} page${compared === 1 ? "" : "s"} — ${changedPages} page${changedPages === 1 ? "" : "s"} with changes.`);
+      if (extra > 0) lines.push(`${extra} page${extra === 1 ? "" : "s"} exist in only one document.`);
+      out.textContent = lines.join(" ");
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Comparison failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = !fileA || !fileB;
+    }
+  });
+
+  sync();
+</script>

@@ -1,0 +1,225 @@
+---
+---
+<section class="stage">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div class="drop-zone" data-zone-a tabindex="0" role="button" aria-label="Choose first spreadsheet (A)">
+      <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-input-a hidden />
+      <span class="dz-title">File A (base)</span>
+      <span class="dz-hint">Drop or click to select</span>
+    </div>
+    <div class="drop-zone" data-zone-b tabindex="0" role="button" aria-label="Choose second spreadsheet (B)">
+      <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-input-b hidden />
+      <span class="dz-title">File B (compare)</span>
+      <span class="dz-hint">Drop or click to select</span>
+    </div>
+  </div>
+
+  <fieldset class="field" data-options style="display:none;margin-top:1rem">
+    <legend class="field-label">Comparison options</legend>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-opt-case /> Ignore case
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-opt-trim /> Trim whitespace
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-opt-empty /> Treat empty as equal
+    </label>
+  </fieldset>
+
+  <div class="actions" style="margin-top:1rem">
+    <button type="button" class="btn btn-primary" data-run disabled>Compare</button>
+    <button type="button" class="btn" data-download-report hidden>Download report (txt)</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+
+  <details data-summary style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Summary stats</summary>
+    <div data-stats></div>
+  </details>
+
+  <details data-grid style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Diff grid (first 2000 cells)</summary>
+    <div style="overflow:auto;max-height:400px;border:1px solid var(--border);border-radius:var(--radius-sm)" data-grid-content></div>
+  </details>
+</section>
+
+<style>
+  .diff-grid { display:grid; gap:0; font-family:var(--mono); font-size:0.7rem; }
+  .diff-header { background:var(--accent-soft); font-weight:600; }
+  .diff-match { background:#e8f5e9; }
+  .diff-mismatch { background:#fdeaea; }
+  .diff-only-a { background:#fff3e0; }
+  .diff-only-b { background:#e3f2fd; }
+  .diff-cell { padding:0.15rem 0.3rem; border:1px solid var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; }
+  .diff-row-num { background:var(--bg); font-weight:600; text-align:right; padding:0.15rem 0.4rem; border:1px solid var(--border); }
+</style>
+
+<script>
+  import { compareSpreadsheets, generateReport } from "./tool.ts";
+  import { readFileAsArrayBuffer, readFileAsText, formatBytes, swapExtension, fileNameOf } from "@/lib/files";
+  import { downloadText } from "@/lib/download";
+
+  const zoneA = document.querySelector<HTMLDivElement>("[data-zone-a]");
+  const zoneB = document.querySelector<HTMLDivElement>("[data-zone-b]");
+  const inputA = document.querySelector<HTMLInputElement>("[data-input-a]");
+  const inputB = document.querySelector<HTMLInputElement>("[data-input-b]");
+  const optionsEl = document.querySelector<HTMLFieldSetElement>("[data-options]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const downloadReport = document.querySelector<HTMLButtonElement>("[data-download-report]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  const statsEl = document.querySelector<HTMLDivElement>("[data-stats]");
+  const gridContent = document.querySelector<HTMLDivElement>("[data-grid-content]");
+  const optCase = document.querySelector<HTMLInputElement>("[data-opt-case]");
+  const optTrim = document.querySelector<HTMLInputElement>("[data-opt-trim]");
+  const optEmpty = document.querySelector<HTMLInputElement>("[data-opt-empty]");
+
+  if (!zoneA || !zoneB || !inputA || !inputB || !optionsEl || !run || !downloadReport || !out ||
+      !statsEl || !gridContent || !optCase || !optTrim || !optEmpty) {
+    throw new Error("mr compare mount failed");
+  }
+
+  let fileA: File | null = null;
+  let fileB: File | null = null;
+  let isXlsxA = false;
+  let isXlsxB = false;
+  let lastResult: ReturnType<typeof compareSpreadsheets> | null = null;
+
+  const options = () => ({
+    ignoreCase: optCase.checked,
+    trimWhitespace: optTrim.checked,
+    treatEmptyAsEqual: optEmpty.checked,
+  });
+
+  const updateRunState = () => {
+    run.disabled = !fileA || !fileB;
+  };
+
+  const addFile = async (zone: "A" | "B", f: File) => {
+    const isXlsx = f.name.toLowerCase().endsWith(".xlsx") || f.type.includes("spreadsheetml");
+    if (zone === "A") { fileA = f; isXlsxA = isXlsx; zoneA.querySelector(".dz-title")!.textContent = f.name; }
+    else { fileB = f; isXlsxB = isXlsx; zoneB.querySelector(".dz-title")!.textContent = f.name; }
+    optionsEl.style.display = "";
+    updateRunState();
+    out.textContent = `Ready: ${fileA?.name} vs ${fileB?.name}`;
+    statsEl.textContent = "";
+    gridContent.innerHTML = "";
+    downloadReport.hidden = true;
+    lastResult = null;
+  };
+
+  const renderStats = (result: Awaited<ReturnType<typeof compareSpreadsheets>>) => {
+    const { stats, dims } = result;
+    statsEl.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.5rem;margin-top:0.5rem">
+        <div class="output-box" style="margin:0"><div class="field-label">Grid size</div><div>${dims.rows} × ${dims.cols}</div></div>
+        <div class="output-box" style="margin:0"><div class="field-label">Cells compared</div><div>${stats.totalCells}</div></div>
+        <div class="output-box ok-text" style="margin:0"><div class="field-label">Matches</div><div>${stats.matches}</div></div>
+        <div class="output-box error-text" style="margin:0"><div class="field-label">Mismatches</div><div>${stats.mismatches}</div></div>
+        <div class="output-box" style="margin:0"><div class="field-label">Only in A</div><div>${stats.onlyA}</div></div>
+        <div class="output-box" style="margin:0"><div class="field-label">Only in B</div><div>${stats.onlyB}</div></div>
+      </div>
+    `;
+  };
+
+  const renderGrid = (result: Awaited<ReturnType<typeof compareSpreadsheets>>) => {
+    const { diffs, dims, onlyInA, onlyInB } = result;
+    const maxCells = 2000;
+    const maxRows = Math.min(dims.rows, Math.ceil(maxCells / Math.max(1, dims.cols)));
+    const maxCols = Math.min(dims.cols, 30);
+
+    const onlyASet = new Set(onlyInA.map(r => r.row));
+    const onlyBSet = new Set(onlyInB.map(r => r.row));
+
+    const grid = document.createElement("div");
+    grid.className = "diff-grid";
+    grid.style.gridTemplateColumns = `40px repeat(${maxCols}, 1fr)`;
+
+    const corner = document.createElement("div");
+    corner.className = "diff-cell diff-header diff-row-num";
+    corner.textContent = "";
+    grid.appendChild(corner);
+
+    for (let c = 0; c < maxCols; c++) {
+      const h = document.createElement("div");
+      h.className = "diff-cell diff-header";
+      h.textContent = `Col ${c + 1}`;
+      grid.appendChild(h);
+    }
+
+    for (let r = 0; r < maxRows; r++) {
+      const rowNum = document.createElement("div");
+      rowNum.className = "diff-cell diff-row-num";
+      rowNum.textContent = String(r + 1);
+      grid.appendChild(rowNum);
+
+      for (let c = 0; c < maxCols; c++) {
+        const cell = document.createElement("div");
+        cell.className = "diff-cell";
+        const idx = r * dims.cols + c;
+        if (onlyASet.has(r)) { cell.classList.add("diff-only-a"); cell.textContent = "— only in A —"; }
+        else if (onlyBSet.has(r)) { cell.classList.add("diff-only-b"); cell.textContent = "— only in B —"; }
+        else if (idx < diffs.length) {
+          const d = diffs[idx];
+          cell.textContent = d.match ? d.a : `A:${d.a} | B:${d.b}`;
+          cell.classList.add(d.match ? "diff-match" : "diff-mismatch");
+        }
+        grid.appendChild(cell);
+      }
+    }
+    gridContent.innerHTML = "";
+    gridContent.appendChild(grid);
+    if (diffs.length > maxCells) {
+      const note = document.createElement("div");
+      note.className = "muted";
+      note.style.padding = "0.5rem";
+      note.textContent = `Showing first ${maxCells} of ${diffs.length} cells.`;
+      gridContent.appendChild(note);
+    }
+  };
+
+  const doCompare = async () => {
+    if (!fileA || !fileB) return;
+    run.disabled = true;
+    out.textContent = "Comparing…";
+    try {
+      let dataA: string | Uint8Array, dataB: string | Uint8Array;
+      if (isXlsxA) dataA = await readFileAsArrayBuffer(fileA); else dataA = await readFileAsText(fileA);
+      if (isXlsxB) dataB = await readFileAsArrayBuffer(fileB); else dataB = await readFileAsText(fileB);
+      lastResult = await compareSpreadsheets(dataA, dataB, isXlsxA, isXlsxB, options());
+      renderStats(lastResult);
+      renderGrid(lastResult);
+      out.textContent = `Done: ${lastResult.stats.matches} matches, ${lastResult.stats.mismatches} mismatches, ${lastResult.stats.onlyA} only in A, ${lastResult.stats.onlyB} only in B.`;
+      downloadReport.hidden = false;
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Comparison failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = !fileA || !fileB;
+    }
+  };
+
+  const attachZone = (zone: HTMLDivElement, input: HTMLInputElement, which: "A" | "B") => {
+    zone.addEventListener("click", () => input.click());
+    zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+    input.addEventListener("change", () => { if (input.files?.[0]) addFile(which, input.files[0]); input.value = ""; });
+    zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+    zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+    zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("drag"); if (e.dataTransfer?.files?.[0]) addFile(which, e.dataTransfer.files[0]); });
+  };
+
+  attachZone(zoneA, inputA, "A");
+  attachZone(zoneB, inputB, "B");
+
+  run.addEventListener("click", doCompare);
+
+  downloadReport.addEventListener("click", () => {
+    if (lastResult && fileA) {
+      downloadText(generateReport(lastResult), swapExtension(fileNameOf(fileA), "txt"), "text/plain");
+    }
+  });
+</script>

@@ -1,0 +1,126 @@
+---
+// mr.diff — compare two texts, line- and character-level.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:1rem">
+    <label class="field">
+      <span class="field-label">Original</span>
+      <textarea class="input" rows="8" placeholder="Paste the first version…" data-a></textarea>
+    </label>
+    <label class="field">
+      <span class="field-label">Changed</span>
+      <textarea class="input" rows="8" placeholder="Paste the second version…" data-b></textarea>
+    </label>
+  </div>
+  <div class="muted" data-summary style="font-size:0.85rem"></div>
+  <div class="output-box" data-out aria-live="polite"></div>
+</section>
+
+<style>
+  .diff-line {
+    display: block;
+    white-space: pre-wrap;
+  }
+  .diff-same {
+    color: var(--muted);
+  }
+  .diff-add {
+    background: rgba(46, 158, 91, 0.13);
+  }
+  .diff-del {
+    background: rgba(194, 67, 58, 0.13);
+  }
+  .diff-tag {
+    color: var(--faint);
+    user-select: none;
+  }
+  .diff-ch-add {
+    background: rgba(46, 158, 91, 0.45);
+    font-weight: 600;
+  }
+  .diff-ch-del {
+    background: rgba(194, 67, 58, 0.45);
+    font-weight: 600;
+  }
+</style>
+
+<script>
+  import { diffChars, diffLines, diffSummary, type DiffOp } from "./tool.ts";
+
+  const a = document.querySelector<HTMLTextAreaElement>("[data-a]")!;
+  const b = document.querySelector<HTMLTextAreaElement>("[data-b]")!;
+  const out = document.querySelector<HTMLDivElement>("[data-out]")!;
+  const summary = document.querySelector<HTMLDivElement>("[data-summary]")!;
+  if (!a || !b || !out || !summary) throw new Error("mr diff mount failed");
+
+  function lineRow(prefix: string, text: string, cls: string): HTMLDivElement {
+    const div = document.createElement("div");
+    div.className = `diff-line ${cls}`;
+    const tag = document.createElement("span");
+    tag.className = "diff-tag";
+    tag.textContent = prefix;
+    div.append(tag, text);
+    return div;
+  }
+
+  function charRow(prefix: string, ops: DiffOp[], mark: "add" | "del"): HTMLDivElement {
+    const div = document.createElement("div");
+    div.className = `diff-line ${mark === "add" ? "diff-add" : "diff-del"}`;
+    const tag = document.createElement("span");
+    tag.className = "diff-tag";
+    tag.textContent = prefix;
+    div.appendChild(tag);
+    for (const o of ops) {
+      if (o.type === "same" || o.type === mark) {
+        const s = document.createElement("span");
+        if (o.type === mark) s.className = `diff-ch-${mark}`;
+        s.textContent = o.text;
+        div.appendChild(s);
+      }
+    }
+    return div;
+  }
+
+  function render() {
+    const sa = a.value;
+    const sb = b.value;
+    if (!sa && !sb) {
+      out.innerHTML = "";
+      summary.textContent = "";
+      return;
+    }
+    const sum = diffSummary(sa, sb);
+    summary.textContent =
+      `${sum.addedLines} line(s) added, ${sum.removedLines} removed · ` +
+      `${sum.addedWords} words added, ${sum.removedWords} removed`;
+    const lineOps = diffLines(sa, sb);
+    out.innerHTML = "";
+    let i = 0;
+    while (i < lineOps.length) {
+      const op = lineOps[i];
+      if (op.type === "same") {
+        out.appendChild(lineRow("  ", op.text, "diff-same"));
+        i++;
+        continue;
+      }
+      const next = lineOps[i + 1];
+      if (op.type === "del" && next && next.type === "add") {
+        const charOps = diffChars(op.text, next.text);
+        out.appendChild(charRow("- ", charOps, "del"));
+        out.appendChild(charRow("+ ", charOps, "add"));
+        i += 2;
+        continue;
+      }
+      if (op.type === "add") {
+        out.appendChild(lineRow("+ ", op.text, "diff-add"));
+      } else {
+        out.appendChild(lineRow("- ", op.text, "diff-del"));
+      }
+      i++;
+    }
+  }
+
+  a.addEventListener("input", render);
+  b.addEventListener("input", render);
+  render();
+</script>

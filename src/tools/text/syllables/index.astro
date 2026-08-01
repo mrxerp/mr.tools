@@ -1,0 +1,64 @@
+---
+// mr.syllables — syllable counts and split points for every word.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Text</span>
+    <textarea class="input" rows="8" placeholder="Paste a word or whole paragraph…" data-input></textarea>
+  </label>
+  <div class="field-label" data-total></div>
+  <div class="output-box" data-out aria-live="polite"></div>
+</section>
+
+<style>
+  .word-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    align-items: baseline;
+    padding-block: 0.3rem;
+    border-bottom: 1px dashed var(--border);
+  }
+  .word-line:last-child {
+    border-bottom: 0;
+  }
+  .word-token {
+    font-weight: 600;
+  }
+  .syllable-break {
+    color: var(--accent);
+  }
+</style>
+
+<script>
+  import { syllabify } from "./tool.ts";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const total = document.querySelector<HTMLDivElement>("[data-total]")!;
+  const out = document.querySelector<HTMLDivElement>("[data-out]")!;
+  if (!input || !total || !out) throw new Error("mr syllables mount failed");
+
+  function render() {
+    const words = syllabify(input.value);
+    const count = words.reduce((n, w) => n + w.count, 0);
+    total.textContent = words.length
+      ? `${words.length} word(s) · ${count} syllable(s) total`
+      : "";
+    out.innerHTML = "";
+    for (const w of words) {
+      const line = document.createElement("div");
+      line.className = "word-line";
+      const token = document.createElement("span");
+      token.className = "word-token";
+      token.textContent = w.word;
+      const splits = document.createElement("span");
+      splits.className = "syllable-break";
+      splits.textContent = `${w.syllables.join("·")}  (${w.count})`;
+      line.append(token, splits);
+      out.appendChild(line);
+    }
+  }
+
+  input.addEventListener("input", render);
+  render();
+</script>

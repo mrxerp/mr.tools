@@ -1,0 +1,163 @@
+---
+// mr.era — view any date in multiple calendars and convert back.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Gregorian date</span>
+    <input class="input" type="date" data-greg style="max-width:16rem" />
+  </label>
+  <output class="output-box" data-proj aria-live="polite"></output>
+
+  <h3 class="era-head">Convert back to Gregorian</h3>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr))">
+    <div>
+      <span class="field-label">Julian date</span>
+      <div class="era-fields">
+        <input class="input" type="number" placeholder="Year" data-jy />
+        <input class="input" type="number" placeholder="Month" data-jm />
+        <input class="input" type="number" placeholder="Day" data-jd />
+      </div>
+      <output class="output-box" data-jout aria-live="polite"></output>
+    </div>
+    <div>
+      <span class="field-label">Hijri date</span>
+      <div class="era-fields">
+        <input class="input" type="number" placeholder="Year" data-hy />
+        <input class="input" type="number" placeholder="Month" data-hm />
+        <input class="input" type="number" placeholder="Day" data-hd />
+      </div>
+      <output class="output-box" data-hout aria-live="polite"></output>
+    </div>
+    <div>
+      <span class="field-label">Hebrew date</span>
+      <div class="era-fields">
+        <input class="input" type="number" placeholder="Year" data-by />
+        <select class="input" data-bm>
+          <option value="">Month…</option>
+          <option>Tishri</option>
+          <option>Heshvan</option>
+          <option>Kislev</option>
+          <option>Tevet</option>
+          <option>Shevat</option>
+          <option>Adar I</option>
+          <option>Adar II</option>
+          <option>Nisan</option>
+          <option>Iyar</option>
+          <option>Sivan</option>
+          <option>Tamuz</option>
+          <option>Av</option>
+          <option>Elul</option>
+        </select>
+        <input class="input" type="number" placeholder="Day" data-bd />
+      </div>
+      <output class="output-box" data-bout aria-live="polite"></output>
+    </div>
+  </div>
+</section>
+
+<style>
+  .era-head {
+    margin-top: 1.4rem;
+    font-size: 1rem;
+  }
+  .era-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.4rem;
+    margin-block: 0.35rem;
+  }
+  .era-fields .input {
+    padding: 0.45rem 0.55rem;
+  }
+</style>
+
+<script>
+  import {
+    CALENDAR_IDS,
+    dateFromCalendar,
+    formatCalendarDate,
+    gregorianFromJulian,
+    isoWeek,
+    isoWeekString,
+    jdnFromGregorian,
+    type CalendarId,
+  } from "./tool.ts";
+
+  const gregEl = document.querySelector<HTMLInputElement>("[data-greg]")!;
+  const projEl = document.querySelector<HTMLOutputElement>("[data-proj]")!;
+  const jy = document.querySelector<HTMLInputElement>("[data-jy]")!;
+  const jm = document.querySelector<HTMLInputElement>("[data-jm]")!;
+  const jd = document.querySelector<HTMLInputElement>("[data-jd]")!;
+  const jout = document.querySelector<HTMLOutputElement>("[data-jout]")!;
+  const hy = document.querySelector<HTMLInputElement>("[data-hy]")!;
+  const hm = document.querySelector<HTMLInputElement>("[data-hm]")!;
+  const hd = document.querySelector<HTMLInputElement>("[data-hd]")!;
+  const hout = document.querySelector<HTMLOutputElement>("[data-hout]")!;
+  const by = document.querySelector<HTMLInputElement>("[data-by]")!;
+  const bm = document.querySelector<HTMLSelectElement>("[data-bm]")!;
+  const bd = document.querySelector<HTMLInputElement>("[data-bd]")!;
+  const bout = document.querySelector<HTMLOutputElement>("[data-bout]")!;
+  if (!gregEl || !projEl || !jy || !jm || !jd || !jout || !hy || !hm || !hd || !hout || !by || !bm || !bd || !bout) {
+    throw new Error("mr.era mount failed");
+  }
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+  function renderProjections() {
+    projEl.innerHTML = "";
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(gregEl.value);
+    if (!m) {
+      projEl.textContent = "Pick a Gregorian date to see every calendar.";
+      return;
+    }
+    const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const w = isoWeek(date);
+    const jdn = jdnFromGregorian(date.getFullYear(), date.getMonth() + 1, date.getDate());
+    const push = (text: string) => {
+      const el = document.createElement("div");
+      el.textContent = text;
+      projEl.appendChild(el);
+    };
+    for (const id of CALENDAR_IDS) {
+      push(formatCalendarDate(date, id as CalendarId));
+    }
+    push(`ISO week: ${isoWeekString(date)} (week ${w.week} of ${w.weekYear})`);
+    push(`Julian Day Number: ${jdn}`);
+  }
+
+  function renderConv(calendar: CalendarId, year: number, month: number | string, day: number, out: HTMLOutputElement) {
+    const date = dateFromCalendar(year, month, day, calendar);
+    out.innerHTML = "";
+    if (date) {
+      const el = document.createElement("div");
+      el.textContent = `→ ${iso(date)}`;
+      el.className = "ok-text";
+      out.appendChild(el);
+    } else {
+      const el = document.createElement("div");
+      el.className = "error-text";
+      el.textContent = "No matching Gregorian date.";
+      out.appendChild(el);
+    }
+  }
+
+  function julianConv() {
+    renderConv("julian", Number(jy.value), Number(jm.value), Number(jd.value), jout);
+  }
+  function hijriConv() {
+    renderConv("islamic-umalqura", Number(hy.value), Number(hm.value), Number(hd.value), hout);
+  }
+  function hebrewConv() {
+    renderConv("hebrew", Number(by.value), bm.value, Number(bd.value), bout);
+  }
+
+  for (const el of [jy, jm, jd]) el.addEventListener("input", julianConv);
+  for (const el of [hy, hm, hd]) el.addEventListener("input", hijriConv);
+  for (const el of [by, bm, bd]) el.addEventListener("input", hebrewConv);
+  gregEl.addEventListener("input", renderProjections);
+
+  const now = new Date();
+  gregEl.value = iso(now);
+  renderProjections();
+</script>

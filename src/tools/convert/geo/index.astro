@@ -1,0 +1,226 @@
+---
+---
+<section class="stage">
+  <h2>GeoReform</h2>
+  <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem">Convert GPS: GPX, KML, GeoJSON, CSV. Reproject, simplify, merge, elevation preview.</p>
+
+  <div class="field">
+    <span class="field-label">Format</span>
+    <select class="input" data-input-format>
+      <option value="gpx">GPX</option>
+      <option value="kml">KML</option>
+      <option value="geojson">GeoJSON</option>
+      <option value="csv">CSV</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <span class="field-label">File</span>
+    <div class="drop-zone" data-zone>
+      <input type="file" class="input" style="display:none" accept=".gpx,.kml,.geojson,.json,.csv" data-file />
+      <div class="dz-title">Drop file or click to browse</div>
+      <div class="dz-hint">GPX, KML, GeoJSON, CSV — max 10MB recommended</div>
+    </div>
+  </div>
+
+  <div class="field" data-convert-ui style="display:none">
+    <span class="field-label">Output Format</span>
+    <select class="input" data-output-format>
+      <option value="gpx">GPX</option>
+      <option value="kml">KML</option>
+      <option value="geojson">GeoJSON</option>
+      <option value="csv">CSV</option>
+    </select>
+  </div>
+
+  <div class="field" data-convert-ui style="display:none">
+    <span class="field-label">Simplify Tolerance</span>
+    <input type="number" class="input" placeholder="0.0" min="0" step="0.1" data-simplify />
+    <div class="muted" style="font-size:0.85rem;margin-top:0.3rem">Remove points within this distance (meters)</div>
+  </div>
+
+  <div class="field" data-convert-ui style="display:none">
+    <label class="input" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;padding:0.6rem 0.75rem">
+      <input type="checkbox" data-merge-tracks> Merge all tracks into one
+    </label>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-convert style="display:none">Convert</button>
+    <button class="btn" data-download style="display:none">Download</button>
+  </div>
+
+  <div class="output-box" data-preview style="display:none;max-height:300px;overflow:auto"></div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { parseGeo, convertGeo, getElevationProfile, formatBytes } from "./tool.ts";
+  import { downloadText, downloadBlob } from "@/lib/download";
+
+  const inputFormatSel = document.querySelector<HTMLSelectElement>("[data-input-format]")!;
+  const outputFormatSel = document.querySelector<HTMLSelectElement>("[data-output-format]")!;
+  const zone = document.querySelector<HTMLElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const convertUi = document.querySelectorAll<HTMLElement>("[data-convert-ui]");
+  const convertBtn = document.querySelector<HTMLButtonElement>("[data-convert]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const simplifyInput = document.querySelector<HTMLInputElement>("[data-simplify]")!;
+  const mergeCheckbox = document.querySelector<HTMLInputElement>("[data-merge-tracks]")!;
+  const previewBox = document.querySelector<HTMLElement>("[data-preview]")!;
+  const outBox = document.querySelector<HTMLElement>("[data-out]")!;
+
+  let parsed: any = null;
+  let converted: string | null = null;
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer?.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files?.[0]) handleFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  async function handleFile(file: File) {
+    convertBtn.disabled = true;
+    convertBtn.style.display = "none";
+    downloadBtn.style.display = "none";
+    previewBox.style.display = "none";
+    convertUi.forEach(el => el.style.display = "none");
+
+    outBox.textContent = "Parsing...";
+    outBox.className = "output-box";
+
+    try {
+      const text = await file.text();
+      const format = inputFormatSel.value as "gpx" | "kml" | "geojson" | "csv";
+      parsed = parseGeo(text, format);
+
+      let msg = `Parsed ${parsed.tracks.length} track${parsed.tracks.length !== 1 ? "s" : ""}, ${parsed.waypoints.length} waypoint${parsed.waypoints.length !== 1 ? "s" : ""}`;
+      if (parsed.bounds.minEle !== undefined) {
+        msg += `, elevation ${parsed.bounds.minEle}m-${parsed.bounds.maxEle}m`;
+      }
+      outBox.textContent = msg;
+      outBox.className = "output-box ok-text";
+
+      convertUi.forEach(el => el.style.display = "");
+      convertBtn.style.display = "";
+      convertBtn.disabled = false;
+      convertBtn.textContent = "Convert";
+
+      renderPreview();
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  }
+
+  function renderPreview() {
+    if (!parsed) return;
+    previewBox.style.display = "block";
+    previewBox.innerHTML = "";
+
+    const div = document.createElement("div");
+    div.style.fontSize = "0.9rem";
+    div.innerHTML = `
+      <strong>${parsed.metadata.name || "Geo Data"}</strong><br>
+      ${parsed.tracks.length} track${parsed.tracks.length !== 1 ? "s" : ""}, ${parsed.waypoints.length} waypoint${parsed.waypoints.length !== 1 ? "s" : ""}<br>
+      Bounds: ${parsed.bounds.minLat.toFixed(4)}°${parsed.bounds.minLat < 0 ? "S" : "N"} / ${parsed.bounds.minLon.toFixed(4)}°${parsed.bounds.minLon < 0 ? "W" : "E"}<br>
+      ${parsed.bounds.minEle !== undefined ? `Elevation: ${parsed.bounds.minEle}m - ${parsed.bounds.maxEle}m` : ""}
+    `;
+    previewBox.appendChild(div);
+
+    if (parsed.tracks.length > 0 && parsed.tracks[0].points.length > 1) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 300;
+      canvas.height = 100;
+      canvas.style.marginTop = "0.5rem";
+      previewBox.appendChild(canvas);
+      drawElevationProfile(canvas, getElevationProfile(parsed.tracks[0]));
+    }
+
+    if (parsed.tracks.length > 1) {
+      const note = document.createElement("div");
+      note.style.marginTop = "0.5rem";
+      note.style.fontSize = "0.8rem";
+      note.style.color = "var(--warn)";
+      note.textContent = `${parsed.tracks.length} tracks. Use Merge if you want to combine them.`;
+      previewBox.appendChild(note);
+    }
+  }
+
+  function drawElevationProfile(canvas: HTMLCanvasElement, profile: Array<{ dist: number; ele: number }>) {
+    if (profile.length < 2) return;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    const minDist = profile[0].dist;
+    const maxDist = profile[profile.length - 1].dist;
+    const minEle = Math.min(...profile.map(p => p.ele));
+    const maxEle = Math.max(...profile.map(p => p.ele));
+    if (maxEle === minEle) return;
+
+    for (let i = 0; i < profile.length; i++) {
+      const x = ((profile[i].dist - minDist) / (maxDist - minDist)) * canvas.width;
+      const y = canvas.height - ((profile[i].ele - minEle) / (maxEle - minEle)) * canvas.height;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "var(--accent)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = "var(--accent)";
+    ctx.font = "0.7rem sans-serif";
+    ctx.fillText("Elevation", 5, 15);
+  }
+
+  convertBtn.addEventListener("click", async () => {
+    if (!parsed) return;
+    convertBtn.disabled = true;
+    convertBtn.textContent = "Converting...";
+    outBox.textContent = "";
+    outBox.className = "output-box";
+
+    try {
+      const simplify = simplifyInput.value ? parseFloat(simplifyInput.value) : undefined;
+      const options = {
+        inputFormat: inputFormatSel.value as "gpx" | "kml" | "geojson" | "csv",
+        outputFormat: outputFormatSel.value as "gpx" | "kml" | "geojson" | "csv",
+        simplifyTolerance: simplify,
+        reproject: "wgs84",
+        mergeTracks: mergeCheckbox.checked,
+      };
+
+      converted = convertGeo(parsed, options);
+
+      const size = formatBytes(converted.length);
+      outBox.textContent = `Converted to ${options.outputFormat.toUpperCase()} (${size}). Ready to download.`;
+      outBox.className = "output-box ok-text";
+      downloadBtn.style.display = "";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    } finally {
+      convertBtn.disabled = false;
+      convertBtn.textContent = "Convert";
+    }
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    if (!converted) return;
+    const ext = outputFormatSel.value;
+    const filename = `converted.${ext}`;
+    downloadText(converted, filename, "text/plain");
+  });
+</script>
+
+<style>
+  .drop-zone.drag { border-color: var(--accent); background: var(--accent-soft); }
+</style>

@@ -1,0 +1,136 @@
+---
+// mr.reader — live camera QR/barcode scanner via BarcodeDetector when available.
+---
+<section class="stage">
+  <video data-video playsinline muted style="width:100%;max-width:480px;border-radius:var(--radius-sm);background:#111;display:none"></video>
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-start>Start camera</button>
+    <button class="btn" type="button" data-stop disabled>Stop</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+  <ul data-history style="list-style:none;padding:0;margin:1rem 0 0"></ul>
+</section>
+
+<script>
+  import { classifyScan } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  interface BarcodeValue {
+    rawValue: string;
+    format?: string;
+  }
+  interface BarcodeDetectorLike {
+    detect(source: HTMLVideoElement): Promise<BarcodeValue[]>;
+  }
+
+  const videoMaybe = document.querySelector<HTMLVideoElement>("[data-video]");
+  const startBtnMaybe = document.querySelector<HTMLButtonElement>("[data-start]");
+  const stopBtnMaybe = document.querySelector<HTMLButtonElement>("[data-stop]");
+  const outMaybe = document.querySelector<HTMLOutputElement>("[data-out]");
+  const historyMaybe = document.querySelector<HTMLUListElement>("[data-history]");
+  if (!videoMaybe || !startBtnMaybe || !stopBtnMaybe || !outMaybe || !historyMaybe) {
+    throw new Error("mr.reader mount failed");
+  }
+  const video = videoMaybe;
+  const startBtn = startBtnMaybe;
+  const stopBtn = stopBtnMaybe;
+  const out = outMaybe;
+  const history = historyMaybe;
+
+  let stream: MediaStream | null = null;
+  let detector: BarcodeDetectorLike | null = null;
+  let timer: number | undefined;
+  const seen = new Set<string>();
+
+  function message(text: string, error = false) {
+    out.innerHTML = "";
+    const el = document.createElement("div");
+    if (error) el.className = "error-text";
+    el.textContent = text;
+    out.appendChild(el);
+  }
+
+  function stop() {
+    if (timer) window.clearInterval(timer);
+    timer = undefined;
+    if (stream) for (const track of stream.getTracks()) track.stop();
+    stream = null;
+    video.pause();
+    video.srcObject = null;
+    video.style.display = "none";
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+  }
+
+  function addResult(value: BarcodeValue) {
+    if (seen.has(value.rawValue)) return;
+    seen.add(value.rawValue);
+    const li = document.createElement("li");
+    li.style.display = "flex";
+    li.style.alignItems = "center";
+    li.style.gap = "0.6rem";
+    li.style.marginBlock = "0.35rem";
+    const info = document.createElement("span");
+    info.textContent = `${classifyScan(value.rawValue)}${value.format ? ` (${value.format})` : ""}: ${value.rawValue}`;
+    info.style.flex = "1";
+    info.style.wordBreak = "break-all";
+    const copy = document.createElement("button");
+    copy.className = "btn";
+    copy.type = "button";
+    copy.textContent = "Copy";
+    copy.style.padding = "0.3rem 0.7rem";
+    copy.addEventListener("click", () => copyTextWithFeedback(value.rawValue, copy));
+    li.appendChild(info);
+    li.appendChild(copy);
+    history.prepend(li);
+  }
+
+  async function tick() {
+    if (!detector || !stream) return;
+    try {
+      const results = await detector.detect(video);
+      for (const r of results) addResult(r);
+    } catch {
+      message("Scanning paused — the detector hit an error.", true);
+      stop();
+    }
+  }
+
+  startBtn.addEventListener("click", async () => {
+    if (stream) return;
+    const g = navigator as unknown as { mediaDevices?: { getUserMedia(constraints: MediaStreamConstraints): Promise<MediaStream> } };
+    if (!g.mediaDevices?.getUserMedia) {
+      message("This browser has no camera access API. Use Chrome, Edge, or Safari (Android/desktop) instead.", true);
+      return;
+    }
+    const DetectorCtor = (window as unknown as { BarcodeDetector?: new () => BarcodeDetectorLike }).BarcodeDetector;
+    if (!DetectorCtor) {
+      message("Your browser lacks the BarcodeDetector API, so live scanning isn't possible here. Use a phone camera app, or Chrome/Edge on desktop or Android. (mr.reader deliberately adds no heavy decoder dependency.)", true);
+      return;
+    }
+    try {
+      detector = new DetectorCtor();
+    } catch {
+      detector = null;
+      message("BarcodeDetector is unavailable in this browser, so live scanning isn't possible here. Use a phone camera app, or Chrome/Edge on desktop or Android.", true);
+      return;
+    }
+    try {
+      stream = await g.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+    } catch {
+      detector = null;
+      message("Camera permission was denied or no camera is available. Enable camera access in your browser settings and try again.", true);
+      return;
+    }
+    video.srcObject = stream;
+    video.style.display = "block";
+    await video.play();
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    message("Point the camera at a QR code or barcode.");
+    timer = window.setInterval(() => { void tick(); }, 400);
+  });
+
+  stopBtn.addEventListener("click", stop);
+  document.addEventListener("pagehide", stop);
+</script>

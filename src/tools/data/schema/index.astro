@@ -1,0 +1,144 @@
+---
+// mr.schema — Generate JSON Schema from sample instances and validate data against schemas.
+---
+<section class="stage">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div class="field">
+      <span class="field-label">Sample JSON Instances (one per line or JSON array)</span>
+      <textarea class="input" rows="10" placeholder='Paste JSON objects, one per line:
+{"name": "Alice", "age": 30}
+{"name": "Bob", "age": 25}
+Or a JSON array:
+[{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}]' data-samples></textarea>
+    </div>
+    <div class="field">
+      <span class="field-label">JSON Schema (for validation)</span>
+      <textarea class="input" rows="10" placeholder="Paste JSON Schema here to validate data…" data-schema></textarea>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-infer>Infer Schema</button>
+    <button class="btn" data-validate>Validate Data</button>
+    <button class="btn" data-copy>Copy Schema</button>
+    <button class="btn" data-download>Download Schema</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div class="field" style="margin-top:1rem">
+    <span class="field-label">Generated Schema <span data-status class="badge-plain"></span></span>
+    <textarea class="input" rows="12" readonly data-output aria-live="polite"></textarea>
+    <div class="error-text" data-error style="display:none;margin-top:0.5rem"></div>
+    <div data-validation style="margin-top:0.5rem"></div>
+  </div>
+</section>
+
+<script>
+  import { inferSchema, validateSchema, formatSchema } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { downloadText } from "@/lib/download";
+
+  const samplesInput = document.querySelector<HTMLTextAreaElement>("[data-samples]")!;
+  const schemaInput = document.querySelector<HTMLTextAreaElement>("[data-schema]")!;
+  const output = document.querySelector<HTMLTextAreaElement>("[data-output]")!;
+  const status = document.querySelector<HTMLElement>("[data-status]")!;
+  const errorEl = document.querySelector<HTMLElement>("[data-error]")!;
+  const validationEl = document.querySelector<HTMLElement>("[data-validation]")!;
+
+  const inferBtn = document.querySelector<HTMLButtonElement>("[data-infer]")!;
+  const validateBtn = document.querySelector<HTMLButtonElement>("[data-validate]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+
+  let currentSchema: object | null = null;
+
+  function parseSamples(input: string): unknown[] {
+    const trimmed = input.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+      return [parsed];
+    } catch {
+      return trimmed.split("\n").map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      }).filter(Boolean) as unknown[];
+    }
+  }
+
+  inferBtn.addEventListener("click", () => {
+    errorEl.style.display = "none";
+    validationEl.innerHTML = "";
+    const samples = parseSamples(samplesInput.value);
+    if (samples.length === 0) {
+      errorEl.style.display = "block";
+      errorEl.textContent = "Please provide at least one JSON sample";
+      return;
+    }
+    const schema = inferSchema(samples);
+    currentSchema = schema;
+    output.value = formatSchema(schema);
+    status.textContent = `Inferred from ${samples.length} sample(s)`;
+    status.className = "badge-ok";
+  });
+
+  validateBtn.addEventListener("click", () => {
+    validationEl.innerHTML = "";
+    if (!currentSchema) {
+      errorEl.style.display = "block";
+      errorEl.textContent = "No schema to validate against — infer or paste a schema first";
+      return;
+    }
+    const samples = parseSamples(samplesInput.value);
+    if (samples.length === 0) {
+      errorEl.style.display = "block";
+      errorEl.textContent = "Please provide data to validate";
+      return;
+    }
+    let allValid = true;
+    for (let i = 0; i < samples.length; i++) {
+      const result = validateSchema(samples[i], currentSchema as any);
+      if (!result.valid && result.errors) {
+        allValid = false;
+        for (const err of result.errors) {
+          const div = document.createElement("div");
+          div.className = "error-text";
+          div.style.fontSize = "0.85rem";
+          div.textContent = `Sample ${i + 1}: ${err.path} — ${err.message}`;
+          validationEl.appendChild(div);
+        }
+      }
+    }
+    if (allValid) {
+      const div = document.createElement("div");
+      div.className = "ok-text";
+      div.style.fontSize = "0.85rem";
+      div.textContent = `All ${samples.length} sample(s) valid ✓`;
+      validationEl.appendChild(div);
+    }
+  });
+
+  copyBtn.addEventListener("click", () => {
+    if (output.value) copyTextWithFeedback(output.value, copyBtn);
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    if (output.value) downloadText(output.value, "schema.json", "application/json");
+  });
+
+  clearBtn.addEventListener("click", () => {
+    samplesInput.value = "";
+    schemaInput.value = "";
+    output.value = "";
+    status.textContent = "";
+    status.className = "badge-plain";
+    errorEl.style.display = "none";
+    validationEl.innerHTML = "";
+    currentSchema = null;
+  });
+</script>

@@ -1,0 +1,185 @@
+---
+---
+<section class="stage">
+  <h2>CalPack</h2>
+  <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem">Convert CSV/Excel event lists → .ics calendar. Merge, dedupe, parse recurring rules.</p>
+
+  <div class="field">
+    <span class="field-label">Files (CSV or XLSX)</span>
+    <div class="drop-zone" data-zone>
+      <input type="file" class="input" style="display:none" accept=".csv,.xlsx,.xls" multiple data-file />
+      <div class="dz-title">Drop files or click to browse</div>
+      <div class="dz-hint">CSV or Excel — multiple files will be merged</div>
+    </div>
+    <div class="muted" style="font-size:0.85rem;margin-top:0.3rem" data-file-count>0 files selected</div>
+  </div>
+
+  <div class="field" data-options style="display:none">
+    <span class="field-label">Options</span>
+    <label class="input" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;padding:0.6rem 0.75rem">
+      <input type="checkbox" data-dedupe checked> Deduplicate events (by UID or date+title)
+    </label>
+  </div>
+
+  <div class="field" data-options style="display:none">
+    <label class="input" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;padding:0.6rem 0.75rem">
+      <input type="checkbox" data-sort checked> Sort by start date
+    </label>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-convert style="display:none">Generate .ics</button>
+    <button class="btn" data-download style="display:none">Download Calendar</button>
+  </div>
+
+  <div class="output-box" data-preview style="display:none;max-height:400px;overflow:auto"></div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { parseCsv, parseXlsx, mergeCalendars, generateIcs, formatBytes } from "./tool.ts";
+  import { downloadText } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const optionsDiv = document.querySelectorAll<HTMLElement>("[data-options]");
+  const fileCount = document.querySelector<HTMLElement>("[data-file-count]")!;
+  const convertBtn = document.querySelector<HTMLButtonElement>("[data-convert]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const dedupeCheckbox = document.querySelector<HTMLInputElement>("[data-dedupe]")!;
+  const sortCheckbox = document.querySelector<HTMLInputElement>("[data-sort]")!;
+  const previewBox = document.querySelector<HTMLElement>("[data-preview]")!;
+  const outBox = document.querySelector<HTMLElement>("[data-out]")!;
+
+  let allEvents: any[] = [];
+  let icsContent: string = "";
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer?.files.length) handleFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files?.length) handleFiles(fileInput.files);
+    fileInput.value = "";
+  });
+
+  async function handleFiles(files: FileList) {
+    allEvents = [];
+    fileCount.textContent = `${files.length} file${files.length !== 1 ? "s" : ""} selected`;
+
+    for (const file of files) {
+      try {
+        if (file.name.endsWith(".csv")) {
+          const text = await file.text();
+          const events = parseCsv(text);
+          allEvents.push(...events);
+        } else if (file.name.endsWith(".xlsx") || file.name.endsWith(".xls")) {
+          const data = new Uint8Array(await file.arrayBuffer());
+          const events = parseXlsx(data);
+          allEvents.push(...events);
+        }
+      } catch (e) {
+        console.warn(`Failed to parse ${file.name}:`, e);
+      }
+    }
+
+    if (dedupeCheckbox.checked) {
+      allEvents = deduplicate(allEvents);
+    }
+
+    if (sortCheckbox.checked) {
+      allEvents.sort((a, b) => a.dtstart.getTime() - b.dtstart.getTime());
+    }
+
+    optionsDiv.forEach(d => d.style.display = "");
+    convertBtn.style.display = "";
+    convertBtn.disabled = allEvents.length === 0;
+
+    outBox.textContent = `Loaded ${allEvents.length} event${allEvents.length !== 1 ? "s" : ""} from ${files.length} file${files.length !== 1 ? "s" : ""}`;
+    outBox.className = "output-box ok-text";
+    renderPreview();
+  }
+
+  function deduplicate(events: any[]): any[] {
+    const seen = new Map<string, any>();
+    for (const e of events) {
+      const key = e.uid || `${e.dtstart.toISOString()}-${e.summary}`;
+      if (!seen.has(key)) seen.set(key, e);
+    }
+    return Array.from(seen.values());
+  }
+
+  function renderPreview() {
+    previewBox.style.display = "block";
+    previewBox.innerHTML = "";
+
+    if (allEvents.length === 0) {
+      previewBox.textContent = "No valid events found";
+      return;
+    }
+
+    const div = document.createElement("div");
+    div.style.fontSize = "0.9rem";
+    div.innerHTML = `
+      <strong>${allEvents.length} event${allEvents.length !== 1 ? "s" : ""} ready</strong><br>
+      Date range: ${allEvents[0].dtstart.toLocaleDateString()} – ${allEvents[allEvents.length - 1].dtstart.toLocaleDateString()}
+    `;
+    previewBox.appendChild(div);
+
+    const list = document.createElement("ul");
+    list.style.marginTop = "0.5rem";
+    list.style.maxHeight = "250px";
+    list.style.overflow = "auto";
+    allEvents.slice(0, 20).forEach(e => {
+      const li = document.createElement("li");
+      li.style.fontSize = "0.8rem";
+      li.style.fontFamily = "var(--mono)";
+      const allDay = e.allDay ? " (all day)" : "";
+      li.textContent = `${e.dtstart.toLocaleString()} – ${e.summary}${allDay}`;
+      list.appendChild(li);
+    });
+    if (allEvents.length > 20) {
+      const li = document.createElement("li");
+      li.style.fontSize = "0.8rem";
+      li.style.color = "var(--muted)";
+      li.textContent = `... and ${allEvents.length - 20} more`;
+      list.appendChild(li);
+    }
+    previewBox.appendChild(list);
+  }
+
+  convertBtn.addEventListener("click", () => {
+    if (allEvents.length === 0) return;
+    convertBtn.disabled = true;
+    convertBtn.textContent = "Generating...";
+    outBox.textContent = "";
+    outBox.className = "output-box";
+
+    try {
+      icsContent = generateIcs(allEvents);
+      outBox.textContent = `Generated calendar (${formatBytes(icsContent.length)}). Ready to download.`;
+      outBox.className = "output-box ok-text";
+      downloadBtn.style.display = "";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    } finally {
+      convertBtn.disabled = false;
+      convertBtn.textContent = "Generate .ics";
+    }
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    if (!icsContent) return;
+    downloadText(icsContent, "calendar.ics", "text/calendar");
+  });
+</script>
+
+<style>
+  .drop-zone.drag { border-color: var(--accent); background: var(--accent-soft); }
+</style>

@@ -91,13 +91,28 @@ async function main() {
   page.setDefaultTimeout(15000);
 
   const routes = [
-    "/tools/age/age/", "/tools/image/mr-compress/", "/tools/image/mr-convert/",
-    "/tools/image/mr-crop/", "/tools/image/mr-resize/", "/tools/qr/qr/",
-    "/tools/text/case/", "/tools/text/password/",
-    "/tools/pdf/mr-annotate/", "/tools/pdf/mr-compress/", "/tools/pdf/mr-convert/",
-    "/tools/pdf/mr-form/", "/tools/pdf/mr-merge/", "/tools/pdf/mr-ocr/",
-    "/tools/pdf/mr-redact/", "/tools/pdf/mr-sign/", "/tools/pdf/mr-split/",
-    "/tools/pdf/mr-unlock/",
+    "/tools/age/age/", "/tools/age/anniversary/", "/tools/age/countdown/",
+    "/tools/age/date-diff/", "/tools/age/dst/", "/tools/age/era/",
+    "/tools/age/meeting/", "/tools/age/shift/", "/tools/age/streak/",
+    "/tools/age/timezone/", "/tools/age/world-clock/",
+    "/tools/audio/bpm/", "/tools/audio/chords/", "/tools/audio/mic/",
+    "/tools/audio/mixer/", "/tools/audio/speak/", "/tools/audio/tone/",
+    "/tools/audio/trim/", "/tools/audio/vocal/",
+    "/tools/image/mr-compress/", "/tools/image/mr-convert/",
+    "/tools/image/mr-crop/", "/tools/image/mr-dither/", "/tools/image/mr-fade/",
+    "/tools/image/mr-glitch/", "/tools/image/mr-meme/", "/tools/image/mr-palette/",
+    "/tools/image/mr-pixelate/", "/tools/image/mr-resize/", "/tools/image/mr-watermark/",
+    "/tools/pdf/diff/", "/tools/pdf/img-to-pdf/", "/tools/pdf/mr-annotate/",
+    "/tools/pdf/mr-compress/", "/tools/pdf/mr-convert/", "/tools/pdf/mr-form/",
+    "/tools/pdf/mr-merge/", "/tools/pdf/mr-ocr/", "/tools/pdf/mr-redact/",
+    "/tools/pdf/mr-sign/", "/tools/pdf/mr-split/", "/tools/pdf/mr-unlock/",
+    "/tools/pdf/page-wash/", "/tools/pdf/perforate/",
+    "/tools/qr/ean/", "/tools/qr/place/", "/tools/qr/qr/",
+    "/tools/qr/reader/", "/tools/qr/vcard/", "/tools/qr/wifi-qr/",
+    "/tools/text/bleep/", "/tools/text/case/", "/tools/text/diff/",
+    "/tools/text/formal/", "/tools/text/invisi/", "/tools/text/lorem/",
+    "/tools/text/palindrome/", "/tools/text/password/", "/tools/text/regex/",
+    "/tools/text/syllables/", "/tools/text/word-salad/", "/tools/text/word-tide/",
   ];
   console.log("== page load checks ==");
   for (const r of routes) await loadCheck(page, r, "load " + r);

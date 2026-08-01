@@ -1,0 +1,67 @@
+---
+// mr.anchor — generate anchor links, heading links, TOC from pasted markdown.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Paste markdown with headings</span>
+    <textarea class="input" rows="10" placeholder="# Heading 1&#10;## Heading 2&#10;..." data-input></textarea>
+  </label>
+  <div class="actions">
+    <button class="btn btn-primary" data-process>Process & Generate TOC</button>
+    <button class="btn" data-copy-toc>Copy TOC Markdown</button>
+    <button class="btn" data-copy-anchors>Copy Anchors</button>
+    <button class="btn" data-preview>Show Preview with Anchors</button>
+  </div>
+  <div class="output-box" data-toc aria-live="polite"></div>
+  <div class="output-box" data-preview-container style="display:none;margin-top:1rem">
+    <div class="field-label">Preview (with anchors)</div>
+    <div data-preview></div>
+  </div>
+</section>
+
+<script>
+  import { processMarkdown, type AnchorResult } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const tocEl = document.querySelector<HTMLDivElement>("[data-toc]")!;
+  const copyTocBtn = document.querySelector<HTMLButtonElement>("[data-copy-toc]")!;
+  const copyAnchorsBtn = document.querySelector<HTMLButtonElement>("[data-copy-anchors]")!;
+  const previewBtn = document.querySelector<HTMLButtonElement>("[data-preview]")!;
+  const previewContainer = document.querySelector<HTMLDivElement>("[data-preview-container]")!;
+  const previewEl = document.querySelector<HTMLDivElement>("[data-preview]")!;
+  let lastResult: AnchorResult | null = null;
+
+  function renderTOC(toc: AnchorResult['toc']): string {
+    let html = "";
+    const renderLevel = (entry: AnchorResult['toc'][0], depth = 0) => {
+      const indent = "  ".repeat(depth);
+      html += `${indent}- [${entry.text}](#${entry.anchor})\n`;
+      if (entry.children?.length) {
+        entry.children.forEach((child) => renderLevel(child, depth + 1));
+      }
+    };
+    toc.forEach((entry) => renderLevel(entry));
+    return html;
+  }
+
+  document.querySelector("[data-process]")!.addEventListener("click", () => {
+    lastResult = processMarkdown(input.value);
+    tocEl.textContent = renderTOC(lastResult.toc);
+    previewEl.innerHTML = lastResult.markdownWithAnchors.replace(/\n/g, "<br>");
+    previewContainer.style.display = "block";
+  });
+
+  copyTocBtn.addEventListener("click", () => {
+    copyTextWithFeedback(tocEl.textContent, copyTocBtn);
+  });
+
+  copyAnchorsBtn.addEventListener("click", () => {
+    const anchors = lastResult?.headings.map(h => `[${h.text}](#${h.anchor})`).join("\n") || "";
+    copyTextWithFeedback(anchors, copyAnchorsBtn);
+  });
+
+  previewBtn.addEventListener("click", () => {
+    previewContainer.style.display = previewContainer.style.display === "none" ? "block" : "none";
+  });
+</script>

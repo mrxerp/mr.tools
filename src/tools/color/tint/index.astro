@@ -1,0 +1,253 @@
+---
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Base Color</span>
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+      <input class="input" type="color" value="#5a5bd9" data-base-color style="width:60px;height:40px;border-radius:8px" />
+      <input class="input" type="text" value="#5a5bd9" data-base-hex placeholder="#5a5bd9" style="flex:1;min-width:120px" />
+      <button class="btn" data-random-base>Random</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Advanced Options</span>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.5rem;margin-top:0.5rem">
+      <div>
+        <label class="field-label">Hue Override (0-360)</label>
+        <input class="input" type="number" min="0" max="360" placeholder="Auto" data-hue-override />
+      </div>
+      <div>
+        <label class="field-label">Chroma Multiplier</label>
+        <input class="input" type="number" min="0.1" max="3" step="0.1" value="1" data-chroma-mult />
+      </div>
+      <div>
+        <label class="field-label">Lightness Min</label>
+        <input class="input" type="number" min="0" max="90" value="5" data-lightness-min />
+      </div>
+      <div>
+        <label class="field-label">Lightness Max</label>
+        <input class="input" type="number" min="10" max="100" value="98" data-lightness-max />
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-generate>Generate Scale</button>
+    <button class="btn" data-preset-tailwind>Tailwind Blue</button>
+    <button class="btn" data-preset-warm>Warm Gray</button>
+    <button class="btn" data-preset-cool>Cool Gray</button>
+  </div>
+
+  <div class="section-title">Color Scale (50–950)</div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:0.5rem" data-scale></div>
+
+  <div class="section-title">Contrast Ratios</div>
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:0.8rem" data-contrast-table>
+      <thead>
+        <tr style="text-align:left;border-bottom:2px solid var(--border)">
+          <th style="padding:0.4rem">Level</th>
+          <th style="padding:0.4rem">Hex</th>
+          <th style="padding:0.4rem">On White</th>
+          <th style="padding:0.4rem">On Black</th>
+          <th style="padding:0.4rem">AA Text</th>
+          <th style="padding:0.4rem">AAA Text</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="section-title">Accessible Pairs (4.5:1+)</div>
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:0.8rem" data-pairs-table>
+      <thead>
+        <tr style="text-align:left;border-bottom:2px solid var(--border)">
+          <th style="padding:0.4rem">Foreground</th>
+          <th style="padding:0.4rem">Background</th>
+          <th style="padding:0.4rem">Ratio</th>
+          <th style="padding:0.4rem">Levels</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="section-title">Exports</div>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
+    <button class="btn" data-export-css>CSS Variables</button>
+    <button class="btn" data-export-scss>SCSS Map</button>
+    <button class="btn" data-export-tailwind>Tailwind Config</button>
+    <button class="btn" data-export-figma>Figma Tokens JSON</button>
+  </div>
+  <output class="output-box" data-output aria-live="polite"></output>
+</section>
+
+<script>
+  import {
+    generateColorScale,
+    generateScaleFromHue,
+    generateCSSVariables,
+    generateSCSSMap,
+    generateTailwindConfig,
+    getContrastRatios,
+    findAccessiblePairs,
+    type ColorScale,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+import { downloadText } from "@/lib/download";
+
+  const baseColor = document.querySelector<HTMLInputElement>("[data-base-color]")!;
+  const baseHex = document.querySelector<HTMLInputElement>("[data-base-hex]")!;
+  const hueOverride = document.querySelector<HTMLInputElement>("[data-hue-override]")!;
+  const chromaMult = document.querySelector<HTMLInputElement>("[data-chroma-mult]")!;
+  const lightnessMin = document.querySelector<HTMLInputElement>("[data-lightness-min]")!;
+  const lightnessMax = document.querySelector<HTMLInputElement>("[data-lightness-max]")!;
+  const scaleGrid = document.querySelector<HTMLDivElement>("[data-scale]")!;
+  const contrastBody = document.querySelector<HTMLTableSectionElement>("[data-contrast-table] tbody")!;
+  const pairsBody = document.querySelector<HTMLTableSectionElement>("[data-pairs-table] tbody")!;
+  const output = document.querySelector<HTMLOutputElement>("[data-output]")!;
+
+  let currentScale: ColorScale | null = null;
+
+  function normalizeHex(hex: string): string {
+    let h = hex.trim();
+    if (!h.startsWith("#")) h = "#" + h;
+    if (h.length === 4) h = "#" + h[1].repeat(2) + h[2].repeat(2) + h[3].repeat(2);
+    return h.toLowerCase();
+  }
+
+  function generate() {
+    const base = normalizeHex(baseHex.value);
+    const hue = hueOverride.value ? parseInt(hueOverride.value, 10) : undefined;
+    const options: any = { baseColor: base };
+    if (hue !== undefined) options.hue = hue;
+    options.chroma = parseFloat(chromaMult.value);
+    options.lightnessRange = [parseInt(lightnessMin.value, 10), parseInt(lightnessMax.value, 10)];
+    currentScale = generateColorScale(base, options);
+    renderScale();
+    renderContrast();
+    renderPairs();
+    output.textContent = "";
+  }
+
+  function renderScale() {
+    if (!currentScale) return;
+    scaleGrid.innerHTML = "";
+    const levels = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+    levels.forEach(level => {
+      const color = currentScale![level];
+      const card = document.createElement("div");
+      card.className = "card";
+      card.style.padding = "0.5rem";
+      card.style.textAlign = "center";
+      card.style.cursor = "pointer";
+      card.innerHTML = `
+        <div style="width:100%;height:50px;border-radius:8px;background:${color};border:1px solid var(--border);margin-bottom:0.5rem"></div>
+        <div class="mono" style="font-size:0.7rem">${level}</div>
+        <div class="mono" style="font-size:0.65rem;word-break:break-all">${color}</div>
+      `;
+      card.addEventListener("click", () => copyTextWithFeedback(color, card.querySelector(".mono:last-child")!));
+      scaleGrid.appendChild(card);
+    });
+  }
+
+  function renderContrast() {
+    if (!currentScale) return;
+    const ratios = getContrastRatios(currentScale);
+    contrastBody!.innerHTML = "";
+    const levels = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
+    levels.forEach(level => {
+      const color = currentScale![level];
+      const ratio = ratios[level];
+      const aaText = ratio.onWhite >= 4.5 || ratio.onBlack >= 4.5;
+      const aaaText = ratio.onWhite >= 7 || ratio.onBlack >= 7;
+      const tr = document.createElement("tr");
+      tr.style.borderBottom = "1px solid var(--border)";
+      tr.innerHTML = `
+        <td style="padding:0.4rem"><span style="display:inline-block;width:20px;height:20px;border-radius:4px;background:${color};border:1px solid var(--border)"></span> ${level}</td>
+        <td style="padding:0.4rem" class="mono">${color}</td>
+        <td style="padding:0.4rem">${ratio.onWhite.toFixed(2)}:1</td>
+        <td style="padding:0.4rem">${ratio.onBlack.toFixed(2)}:1</td>
+        <td style="padding:0.4rem" class="${aaText ? "ok-text" : "error-text"}">${aaText ? "✓" : "✗"}</td>
+        <td style="padding:0.4rem" class="${aaaText ? "ok-text" : "error-text"}">${aaaText ? "✓" : "✗"}</td>
+      `;
+      contrastBody!.appendChild(tr);
+    });
+  }
+
+  function renderPairs() {
+    if (!currentScale) return;
+    const pairs = findAccessiblePairs(currentScale, 4.5);
+    pairsBody!.innerHTML = "";
+    pairs.slice(0, 20).forEach(pair => {
+      const tr = document.createElement("tr");
+      tr.style.borderBottom = "1px solid var(--border)";
+      tr.innerHTML = `
+        <td style="padding:0.4rem"><span style="display:inline-block;width:20px;height:20px;border-radius:4px;background:${pair.foreground};border:1px solid var(--border)"></span></td>
+        <td style="padding:0.4rem"><span style="display:inline-block;width:20px;height:20px;border-radius:4px;background:${pair.background};border:1px solid var(--border)"></span></td>
+        <td style="padding:0.4rem" class="mono">${pair.ratio}:1</td>
+        <td style="padding:0.4rem" class="mono">${pair.level}</td>
+      `;
+      pairsBody!.appendChild(tr);
+    });
+  }
+
+  function exportFormat(type: "css" | "scss" | "tailwind" | "figma") {
+    if (!currentScale) return;
+    let result = "";
+    if (type === "css") result = generateCSSVariables(currentScale);
+    else if (type === "scss") result = generateSCSSMap(currentScale);
+    else if (type === "tailwind") result = generateTailwindConfig(currentScale);
+    else if (type === "figma") {
+      result = JSON.stringify({
+        name: "Color Scale",
+        colors: currentScale,
+      }, null, 2);
+    }
+    output.textContent = result;
+    copyTextWithFeedback(result, output);
+  }
+
+  function applyPreset(preset: "tailwind" | "warm" | "cool") {
+    let hue = 220, chroma = 0.12;
+    if (preset === "warm") { hue = 35; chroma = 0.08; }
+    if (preset === "cool") { hue = 220; chroma = 0.06; }
+    const scale = generateScaleFromHue(hue, chroma);
+    currentScale = scale;
+    baseColor.value = scale[500];
+    baseHex.value = scale[500];
+    hueOverride.value = String(hue);
+    chromaMult.value = "1";
+    renderScale();
+    renderContrast();
+    renderPairs();
+    output.textContent = "";
+  }
+
+  baseHex.addEventListener("input", () => { baseColor.value = normalizeHex(baseHex.value); });
+  baseColor.addEventListener("input", () => { baseHex.value = baseColor.value; });
+  document.querySelector("[data-generate]")!.addEventListener("click", generate);
+  document.querySelector("[data-random-base]")!.addEventListener("click", () => {
+    const h = Math.floor(Math.random() * 360);
+    const scale = generateScaleFromHue(h, 0.15);
+    currentScale = scale;
+    baseColor.value = scale[500];
+    baseHex.value = scale[500];
+    hueOverride.value = "";
+    renderScale();
+    renderContrast();
+    renderPairs();
+    output.textContent = "";
+  });
+  document.querySelector("[data-preset-tailwind]")!.addEventListener("click", () => applyPreset("tailwind"));
+  document.querySelector("[data-preset-warm]")!.addEventListener("click", () => applyPreset("warm"));
+  document.querySelector("[data-preset-cool]")!.addEventListener("click", () => applyPreset("cool"));
+  document.querySelector("[data-export-css]")!.addEventListener("click", () => exportFormat("css"));
+  document.querySelector("[data-export-scss]")!.addEventListener("click", () => exportFormat("scss"));
+  document.querySelector("[data-export-tailwind]")!.addEventListener("click", () => exportFormat("tailwind"));
+  document.querySelector("[data-export-figma]")!.addEventListener("click", () => exportFormat("figma"));
+
+  generate();
+</script>

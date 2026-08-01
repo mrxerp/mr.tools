@@ -1,0 +1,214 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose CSV or XLSX files to stitch">
+    <input type="file" multiple accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-input hidden />
+    <span class="dz-title">Drop CSV/XLSX files here or click to browse</span>
+    <span class="dz-hint">Multiple files — sheets will be combined by name or stacked.</span>
+  </div>
+
+  <ol data-list class="stitch-list" aria-label="Files to stitch"></ol>
+  <div class="field-label" data-total></div>
+
+  <fieldset class="field" data-options style="display:none;margin-top:1rem">
+    <legend class="field-label">Stitch options</legend>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <span style="width:120px">Mode:</span>
+      <select class="input" data-mode style="flex:1;max-width:280px">
+        <option value="by-name">Combine sheets by name (merge "Jan", "Feb" sheets across files)</option>
+        <option value="all-sheets">All sheets → single sheet</option>
+        <option value="first-sheet">First sheet only from each file</option>
+      </select>
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-align-cols /> Align columns across sheets (union of all columns)
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-include-header /> Include header row
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <span style="width:120px">Output:</span>
+      <select class="input" data-format style="flex:1;max-width:200px">
+        <option value="xlsx">XLSX (preserves multi-sheet structure)</option>
+        <option value="csv">CSV (single sheet only)</option>
+      </select>
+    </label>
+  </fieldset>
+
+  <div class="actions" style="margin-top:1rem">
+    <button type="button" class="btn btn-primary" data-run disabled>Stitch files</button>
+    <button type="button" class="btn" data-download hidden>Download</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+
+  <details data-preview style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Sheet summary</summary>
+    <div data-sheet-info></div>
+  </details>
+</section>
+
+<style>
+  .stitch-list {
+    margin: 0.8rem 0 0.4rem;
+    padding-left: 1.4rem;
+    display: grid;
+    gap: 0.35rem;
+  }
+  .stitch-list li {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    font-size: 0.9rem;
+  }
+  .stitch-list .size { color: var(--muted); }
+  .stitch-list .remove {
+    margin-left: auto;
+    border: none;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .stitch-list .remove:hover { color: var(--danger); }
+</style>
+
+<script>
+  import { stitchWorkbooks, stitchToXLSX, stitchToCSV } from "./tool.ts";
+  import { readFileAsArrayBuffer, readFileAsText, formatBytes, swapExtension, fileNameOf } from "@/lib/files";
+  import { downloadText, downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const list = document.querySelector<HTMLOListElement>("[data-list]");
+  const total = document.querySelector<HTMLDivElement>("[data-total]");
+  const opts = document.querySelector<HTMLFieldSetElement>("[data-options]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const download = document.querySelector<HTMLButtonElement>("[data-download]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  const modeSel = document.querySelector<HTMLSelectElement>("[data-mode]");
+  const alignChk = document.querySelector<HTMLInputElement>("[data-align-cols]");
+  const headerChk = document.querySelector<HTMLInputElement>("[data-include-header]");
+  const formatSel = document.querySelector<HTMLSelectElement>("[data-format]");
+  const sheetInfo = document.querySelector<HTMLDivElement>("[data-sheet-info]");
+
+  if (!zone || !input || !list || !total || !opts || !run || !download || !out ||
+      !modeSel || !alignChk || !headerChk || !formatSel || !sheetInfo) {
+    throw new Error("mr stitch mount failed");
+  }
+
+  const files: File[] = [];
+  let lastResult: Awaited<ReturnType<typeof stitchWorkbooks>> | null = null;
+  let lastXlsx: Uint8Array | null = null;
+  let lastCsv = "";
+
+  const render = () => {
+    list.textContent = "";
+    for (const [i, file] of files.entries()) {
+      const li = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = file.name;
+      const size = document.createElement("span");
+      size.className = "size";
+      size.textContent = formatBytes(file.size);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "remove";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => { files.splice(i, 1); render(); });
+      li.append(name, size, remove);
+      list.appendChild(li);
+    }
+    const bytes = files.reduce((n, f) => n + f.size, 0);
+    total.textContent = files.length ? `${files.length} file${files.length === 1 ? "" : "s"} · ${formatBytes(bytes)} total` : "";
+    run.disabled = files.length === 0;
+    opts.style.display = files.length > 0 ? "" : "none";
+  };
+
+  const addFiles = (incoming: FileList | File[]) => {
+    for (const file of Array.from(incoming)) {
+      if (file.name.toLowerCase().endsWith(".csv") || file.name.toLowerCase().endsWith(".xlsx") ||
+          file.type === "text/csv" || file.type.includes("spreadsheetml")) {
+        files.push(file);
+      }
+    }
+    render();
+  };
+
+  const doStitch = async () => {
+    if (files.length === 0) return;
+    run.disabled = true;
+    out.textContent = "Stitching…";
+    try {
+      const inputs = await Promise.all(files.map(async f => ({
+        data: f.name.toLowerCase().endsWith(".xlsx") ? await readFileAsArrayBuffer(f) : await readFileAsText(f),
+        isXlsx: f.name.toLowerCase().endsWith(".xlsx"),
+        name: f.name,
+      })));
+
+      lastResult = await stitchWorkbooks(inputs, {
+        mode: modeSel.value as "by-name" | "all-sheets" | "first-sheet",
+        includeHeader: headerChk.checked,
+        alignColumns: alignChk.checked,
+        outputFormat: formatSel.value as "xlsx" | "csv",
+      });
+
+      if (formatSel.value === "xlsx") {
+        lastXlsx = await stitchToXLSX(lastResult, {
+          mode: modeSel.value as "by-name" | "all-sheets" | "first-sheet",
+          includeHeader: headerChk.checked,
+          alignColumns: alignChk.checked,
+          outputFormat: "xlsx",
+        });
+        out.textContent = `Stitched: ${lastResult.stats.totalSheets} sheets, ${lastResult.stats.totalRows} rows, ${lastResult.stats.columnsInOutput} cols · XLSX ${formatBytes(lastXlsx.length)}`;
+      } else {
+        lastCsv = stitchToCSV(lastResult, {
+          mode: modeSel.value as "by-name" | "all-sheets" | "first-sheet",
+          includeHeader: headerChk.checked,
+          alignColumns: alignChk.checked,
+          outputFormat: "csv",
+        });
+        out.textContent = `Stitched: ${lastResult.stats.totalSheets} sheets, ${lastResult.stats.totalRows} rows, ${lastResult.stats.columnsInOutput} cols · CSV ${formatBytes(new TextEncoder().encode(lastCsv).length)}`;
+      }
+
+      let html = "";
+      for (const sheet of lastResult.sheets) {
+        html += `<div style="margin:0.3rem 0;padding:0.5rem;background:var(--bg);border-radius:var(--radius-sm)">
+          <strong>${sheet.name}</strong> (from ${sheet.sourceFile}) — ${sheet.rows.length} rows × ${sheet.headers.length} cols
+        </div>`;
+      }
+      sheetInfo.innerHTML = html;
+
+      download.hidden = false;
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Stitch failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = files.length === 0;
+    }
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  input.addEventListener("change", () => { if (input.files) addFiles(input.files); input.value = ""; });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("drag"); if (e.dataTransfer) addFiles(e.dataTransfer.files); });
+
+  run.addEventListener("click", doStitch);
+
+  download.addEventListener("click", () => {
+    if (!lastResult || files.length === 0) return;
+    const baseName = fileNameOf(files[0]).replace(/\.[^./\\]+$/, "") + "_stitched";
+    if (formatSel.value === "xlsx" && lastXlsx) {
+      downloadArrayBuffer(lastXlsx, baseName + ".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    } else if (lastCsv) {
+      downloadText(lastCsv, baseName + ".csv", "text/csv");
+    }
+  });
+
+  render();
+</script>

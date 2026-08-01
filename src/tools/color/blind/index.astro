@@ -1,0 +1,279 @@
+---
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Input Method</span>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="radio" name="input-method" value="image" checked data-input-method> Upload Image</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="radio" name="input-method" value="palette" data-input-method> Color Palette</label>
+    </div>
+  </div>
+
+  <div class="field" data-image-input>
+    <span class="field-label">Upload Image</span>
+    <div class="drop-zone" data-drop-zone>
+      <div class="dz-title">Drag & drop an image or click to browse</div>
+      <div class="dz-hint">PNG, JPG, WebP</div>
+      <input type="file" accept="image/*" hidden data-file-input />
+    </div>
+  </div>
+
+  <div class="field" data-palette-input style="display:none">
+    <span class="field-label">Color Palette (space/comma separated hex)</span>
+    <textarea class="input" rows="3" placeholder="#ff0000 #00ff00 #0000ff #ffff00 #ff00ff" data-palette-list></textarea>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Simulation Type</span>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="radio" name="cvd" value="protanopia" checked data-cvd-type> Protanopia</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="radio" name="cvd" value="deuteranopia" data-cvd-type> Deuteranopia</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="radio" name="cvd" value="tritanopia" data-cvd-type> Tritanopia</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="radio" name="cvd" value="achromatopsia" data-cvd-type> Achromatopsia</label>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-simulate>Simulate</button>
+    <button class="btn" data-check-all>Check All Types</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div class="section-title" data-preview-title style="display:none">Simulation Preview</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem" data-preview-grid style="display:none">
+    <div class="card" style="text-align:center">
+      <div class="field-label">Original</div>
+      <canvas data-original-canvas style="max-width:100%;border-radius:8px;border:1px solid var(--border)"></canvas>
+    </div>
+    <div class="card" style="text-align:center">
+      <div class="field-label">Simulated <span data-cvd-label></span></div>
+      <canvas data-simulated-canvas style="max-width:100%;border-radius:8px;border:1px solid var(--border)"></canvas>
+    </div>
+  </div>
+
+  <div class="section-title">Palette Risk Analysis</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem" data-risk-grid></div>
+
+  <div class="section-title">Risk Summary</div>
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:0.85rem" data-summary-table>
+      <thead>
+        <tr style="text-align:left;border-bottom:2px solid var(--border)">
+          <th style="padding:0.5rem">CVD Type</th>
+          <th style="padding:0.5rem">Total Pairs</th>
+          <th style="padding:0.5rem">Risky Pairs</th>
+          <th style="padding:0.5rem">Status</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <output class="output-box" data-output aria-live="polite"></output>
+</section>
+
+<script>
+  import {
+    simulateCVD,
+    simulatePaletteCVD,
+    checkPaletteRisks,
+    checkAllCVDTypes,
+    generateCVDReport,
+    simulateImageData,
+    getCVDName,
+    type CVDType,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+import { downloadBlob } from "@/lib/download";
+
+  const imageInputSection = document.querySelector<HTMLDivElement>("[data-image-input]")!;
+  const paletteInputSection = document.querySelector<HTMLDivElement>("[data-palette-input]")!;
+  const dropZone = document.querySelector<HTMLDivElement>("[data-drop-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file-input]")!;
+  const paletteList = document.querySelector<HTMLTextAreaElement>("[data-palette-list]")!;
+  const cvdTypeInputs = document.querySelectorAll<HTMLInputElement>("[data-cvd-type]");
+  const previewGrid = document.querySelector<HTMLDivElement>("[data-preview-grid]")!;
+  const previewTitle = document.querySelector<HTMLDivElement>("[data-preview-title]")!;
+  const originalCanvas = document.querySelector<HTMLCanvasElement>("[data-original-canvas]")!;
+  const simulatedCanvas = document.querySelector<HTMLCanvasElement>("[data-simulated-canvas]")!;
+  const cvdLabel = document.querySelector<HTMLSpanElement>("[data-cvd-label]")!;
+  const riskGrid = document.querySelector<HTMLDivElement>("[data-risk-grid]")!;
+  const summaryBody = document.querySelector<HTMLTableSectionElement>("[data-summary-table] tbody")!;
+  const output = document.querySelector<HTMLOutputElement>("[data-output]")!;
+
+  let currentImage: HTMLImageElement | null = null;
+  let currentPalette: string[] = [];
+
+  function switchInputMethod(method: "image" | "palette") {
+    imageInputSection.style.display = method === "image" ? "block" : "none";
+    paletteInputSection.style.display = method === "palette" ? "block" : "none";
+  }
+
+  document.querySelectorAll<HTMLInputElement>("[data-input-method]").forEach(input => {
+    input.addEventListener("change", () => switchInputMethod(input.value as "image" | "palette"));
+  });
+
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag"));
+  dropZone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropZone.classList.remove("drag");
+    const file = e.dataTransfer?.files[0];
+    if (file && file.type.startsWith("image/")) handleImageFile(file);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files?.[0]) handleImageFile(fileInput.files[0]);
+  });
+
+  function handleImageFile(file: File) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      currentImage = img;
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      const maxDim = 400;
+      const scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      currentPalette = Array.from({ length: 10 }, (_, i) => {
+        const idx = Math.floor((imageData.data.length / 4) * i / 10) * 4;
+        const [r, g, b] = [imageData.data[idx], imageData.data[idx + 1], imageData.data[idx + 2]];
+        return `#${[r, g, b].map(x => x.toString(16).padStart(2, "0")).join("")}`;
+      });
+      paletteList.value = currentPalette.join(" ");
+      runSimulation();
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+
+  function getSelectedCVDType(): CVDType {
+    return document.querySelector<HTMLInputElement>("[data-cvd-type]:checked")?.value as CVDType || "protanopia";
+  }
+
+  function runSimulation() {
+    const type = getSelectedCVDType();
+    cvdLabel.textContent = `(${getCVDName(type)})`;
+
+    if (currentImage) {
+      previewTitle.style.display = "block";
+      previewGrid.style.display = "grid";
+
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      const maxDim = 400;
+      const scale = Math.min(maxDim / currentImage.width, maxDim / currentImage.height, 1);
+      canvas.width = currentImage.width * scale;
+      canvas.height = currentImage.height * scale;
+      ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      originalCanvas.width = canvas.width;
+      originalCanvas.height = canvas.height;
+      originalCanvas.getContext("2d")!.putImageData(imageData, 0, 0);
+
+      const simulated = simulateImageData(imageData, type);
+      simulatedCanvas.width = canvas.width;
+      simulatedCanvas.height = canvas.height;
+      simulatedCanvas.getContext("2d")!.putImageData(simulated, 0, 0);
+    } else {
+      previewTitle.style.display = "none";
+      previewGrid.style.display = "none";
+    }
+
+    if (currentPalette.length > 0) {
+      renderPaletteSimulation(type);
+    }
+  }
+
+  function renderPaletteSimulation(type: CVDType) {
+    riskGrid.innerHTML = "";
+    const simulated = simulatePaletteCVD(currentPalette, type);
+
+    currentPalette.forEach((color, i) => {
+      const sim = simulated[i];
+      const card = document.createElement("div");
+      card.className = "card";
+      card.style.padding = "0.75rem";
+      card.innerHTML = `
+        <div style="display:flex;gap:1rem;align-items:center">
+          <div style="width:50px;height:50px;border-radius:8px;background:${color};border:1px solid var(--border)"></div>
+          <div style="width:50px;height:50px;border-radius:8px;background:${sim.simulated};border:1px solid var(--border)"></div>
+        </div>
+        <div style="margin-top:0.5rem;display:flex;gap:1rem;justify-content:center;font-size:0.75rem">
+          <span class="mono">${color}</span>
+          <span class="mono">${sim.simulated}</span>
+        </div>
+      `;
+      riskGrid.appendChild(card);
+    });
+
+    const risks = checkPaletteRisks(currentPalette, type);
+    let report = `CVD Type: ${getCVDName(type)}\n\n`;
+    risks.forEach(risk => {
+      if (risk.risky) {
+        report += `⚠ RISKY: ${risk.foreground} on ${risk.background} — Original: ${risk.originalRatio}:1, Simulated: ${risk.simulatedRatio}:1\n`;
+      }
+    });
+    if (!risks.some(r => r.risky)) {
+      report += "No risky pairs detected for this CVD type.";
+    }
+    output.textContent = report;
+  }
+
+  function checkAllTypes() {
+    if (currentPalette.length === 0) return;
+    const report = generateCVDReport(currentPalette);
+    summaryBody!.innerHTML = "";
+    report.summary.forEach(s => {
+      const tr = document.createElement("tr");
+      tr.style.borderBottom = "1px solid var(--border)";
+      const status = s.riskyPairs > 0 ? "⚠ Has Risks" : "✓ Safe";
+      const statusClass = s.riskyPairs > 0 ? "error-text" : "ok-text";
+      tr.innerHTML = `
+        <td style="padding:0.5rem">${getCVDName(s.type)}</td>
+        <td style="padding:0.5rem">${s.totalPairs}</td>
+        <td style="padding:0.5rem">${s.riskyPairs}</td>
+        <td style="padding:0.5rem" class="${statusClass}">${status}</td>
+      `;
+      summaryBody!.appendChild(tr);
+    });
+
+    let fullReport = "FULL CVD RISK REPORT\n========================\n\n";
+    Object.entries(report.details).forEach(([type, risks]) => {
+      fullReport += `\n${getCVDName(type as CVDType)}\n`;
+      fullReport += "-".repeat(40) + "\n";
+      const risky = risks.filter(r => r.risky);
+      if (risky.length === 0) {
+        fullReport += "No risky pairs.\n";
+      } else {
+        risky.forEach(r => {
+          fullReport += `  ${r.foreground} on ${r.background}: ${r.simulatedRatio}:1 (was ${r.originalRatio}:1)\n`;
+        });
+      }
+    });
+    output.textContent = fullReport;
+  }
+
+  document.querySelector("[data-simulate]")!.addEventListener("click", runSimulation);
+  document.querySelector("[data-check-all]")!.addEventListener("click", checkAllTypes);
+  document.querySelector("[data-clear]")!.addEventListener("click", () => {
+    currentImage = null;
+    currentPalette = [];
+    paletteList.value = "";
+    fileInput.value = "";
+    riskGrid.innerHTML = "";
+    summaryBody!.innerHTML = "";
+    output.textContent = "";
+    previewTitle.style.display = "none";
+    previewGrid.style.display = "none";
+  });
+
+  cvdTypeInputs.forEach(input => {
+    input.addEventListener("change", runSimulation);
+  });
+</script>

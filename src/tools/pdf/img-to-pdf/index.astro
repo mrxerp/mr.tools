@@ -1,0 +1,162 @@
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose images to convert to PDF">
+    <input type="file" multiple accept="image/png,image/jpeg" data-input hidden />
+    <span class="dz-title">Drop PNG or JPEG images here or click to browse</span>
+    <span class="dz-hint">One PDF out — either one page per image or all images stacked on one page.</span>
+  </div>
+
+  <ol data-list class="img-list" aria-label="Images to convert"></ol>
+
+  <label class="field">
+    <span class="field-label">Layout</span>
+    <select class="input" data-mode>
+      <option value="pages">One page per image</option>
+      <option value="combined">All images on one page</option>
+    </select>
+  </label>
+
+  <div class="actions">
+    <button type="button" class="btn btn-primary" data-run disabled>Make PDF</button>
+    <button type="button" class="btn" data-download hidden>Download PDF</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<style>
+  .img-list {
+    margin: 0.8rem 0 0.4rem;
+    padding-left: 1.4rem;
+    display: grid;
+    gap: 0.35rem;
+  }
+  .img-list li {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    font-size: 0.9rem;
+  }
+  .img-list .size {
+    color: var(--muted);
+  }
+  .img-list .dims {
+    color: var(--faint);
+    font-family: var(--mono);
+    font-size: 0.8rem;
+  }
+  .img-list .remove {
+    margin-left: auto;
+    border: none;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .img-list .remove:hover {
+    color: var(--danger, #c0392b);
+  }
+</style>
+
+<script>
+  import { imagesToPdf } from "./tool.ts";
+  import { readFileAsArrayBuffer, formatBytes, swapExtension } from "@/lib/files";
+  import { downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const list = document.querySelector<HTMLOListElement>("[data-list]");
+  const mode = document.querySelector<HTMLSelectElement>("[data-mode]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const download = document.querySelector<HTMLButtonElement>("[data-download]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  if (!zone || !input || !list || !mode || !run || !download || !out) throw new Error("mr img to pdf mount failed");
+
+  const images: { file: File; bytes: Uint8Array | null }[] = [];
+
+  const render = () => {
+    list.textContent = "";
+    for (const [i, item] of images.entries()) {
+      const li = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = item.file.name;
+      const size = document.createElement("span");
+      size.className = "size";
+      size.textContent = formatBytes(item.file.size);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "remove";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => {
+        images.splice(i, 1);
+        render();
+      });
+      li.append(name, size, remove);
+      list.appendChild(li);
+    }
+    run.disabled = images.length === 0;
+  };
+
+  const addFiles = (incoming: FileList | File[]) => {
+    for (const file of Array.from(incoming)) {
+      if (file.type.startsWith("image/") || /\.(png|jpe?g)$/i.test(file.name)) {
+        images.push({ file, bytes: null });
+      }
+    }
+    render();
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      input.click();
+    }
+  });
+  input.addEventListener("change", () => {
+    if (input.files) addFiles(input.files);
+    input.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer) addFiles(e.dataTransfer.files);
+  });
+
+  let pdf: Uint8Array | null = null;
+  run.addEventListener("click", async () => {
+    run.disabled = true;
+    out.textContent = "Building PDF…";
+    try {
+      const inputs = await Promise.all(
+        images.map(async (item) => {
+          const buf = await readFileAsArrayBuffer(item.file);
+          item.bytes = new Uint8Array(buf);
+          return { bytes: item.bytes, mime: item.file.type || "application/octet-stream" };
+        }),
+      );
+      pdf = await imagesToPdf(inputs, mode.value === "combined" ? "combined" : "pages");
+      const pages = mode.value === "combined" ? 1 : images.length;
+      out.textContent = `Made a ${pages}-page PDF from ${images.length} image${images.length === 1 ? "" : "s"} (${formatBytes(pdf.byteLength)}).`;
+      download.hidden = false;
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "PDF build failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = images.length === 0;
+    }
+  });
+
+  download.addEventListener("click", () => {
+    if (pdf) downloadArrayBuffer(pdf, swapExtension(images[0].file.name, "pdf"), "application/pdf");
+  });
+
+  render();
+</script>

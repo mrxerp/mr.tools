@@ -1,0 +1,120 @@
+---
+// mr.vocal — phase-cancel the center channel of a stereo track (karaoke).
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button">
+    <input type="file" accept="audio/*" data-file hidden />
+    <div class="dz-title">Drop a stereo track or click to browse</div>
+    <div class="dz-hint">MP3, WAV, OGG, M4A — processed locally, nothing uploads.</div>
+  </div>
+
+  <div data-controls style="display:none">
+    <label class="field">
+      <span class="field-label">Mode</span>
+      <select class="input" data-mode>
+        <option value="remove">Karaoke — remove center (vocals)</option>
+        <option value="isolate">Isolate center</option>
+      </select>
+    </label>
+    <div class="actions">
+      <button class="btn btn-primary" type="button" data-run disabled>Process &amp; download WAV</button>
+    </div>
+  </div>
+  <p class="muted" style="font-size:0.85rem">
+    Phase cancellation removes anything that sits equally in both channels —
+    that's usually the lead vocal. Reverb, doubles, and off-center vocals
+    survive. The result is mono WAV and there is no real-time preview.
+  </p>
+  <p class="error-text" data-error style="display:none"></p>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { centerCancel, centerIsolate } from "./tool.ts";
+  import { encodeWav } from "../_wav.ts";
+  import { readFileAsArrayBuffer, swapExtension } from "@/lib/files";
+  import { downloadBlob } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const controls = document.querySelector<HTMLDivElement>("[data-controls]")!;
+  const modeEl = document.querySelector<HTMLSelectElement>("[data-mode]")!;
+  const runBtn = document.querySelector<HTMLButtonElement>("[data-run]")!;
+  const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
+
+  let buffer: AudioBuffer | null = null;
+  let fileName = "";
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) void load(file);
+    fileInput.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) void load(file);
+  });
+
+  function setError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+
+  async function load(file: File) {
+    setError("");
+    try {
+      const ctx = new AudioContext();
+      const data = await readFileAsArrayBuffer(file);
+      buffer = await ctx.decodeAudioData(data);
+      await ctx.close();
+      fileName = file.name;
+      controls.style.display = "";
+      runBtn.disabled = buffer.numberOfChannels < 2;
+      if (buffer.numberOfChannels < 2) setError("This file is mono — phase cancellation needs a stereo track.");
+    } catch {
+      setError("Could not decode that file as audio.");
+    }
+  }
+
+  async function run() {
+    if (!buffer || runBtn.disabled) return;
+    const left = buffer.getChannelData(0);
+    const right = buffer.getChannelData(1);
+    const mono = modeEl.value === "isolate" ? centerIsolate(left, right) : centerCancel(left, right);
+
+    const off = new OfflineAudioContext(1, mono.length, buffer.sampleRate);
+    const dst = off.createBuffer(1, mono.length, buffer.sampleRate);
+    dst.copyToChannel(mono, 0);
+    const src = off.createBufferSource();
+    src.buffer = dst;
+    src.connect(off.destination);
+    src.start();
+    const rendered = await off.startRendering();
+
+    const wav = encodeWav(rendered.getChannelData(0), rendered.sampleRate, 1);
+    downloadBlob(new Blob([wav], { type: "audio/wav" }), swapExtension(fileName, "wav"));
+    out.innerHTML = "";
+    const el = document.createElement("div");
+    el.textContent = modeEl.value === "isolate"
+      ? "Center-isolated WAV exported — this keeps the vocal and drops panned instruments."
+      : "Karaoke WAV exported — vocals that were exactly center should be gone.";
+    out.appendChild(el);
+  }
+
+  runBtn.addEventListener("click", run);
+</script>

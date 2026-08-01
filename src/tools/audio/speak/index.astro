@@ -1,0 +1,172 @@
+---
+// mr.speak — pasted text -> spoken audio via the OS speech synthesis voices.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Text</span>
+    <textarea class="input" rows="6" placeholder="Paste or type the text to speak…" data-text></textarea>
+  </label>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+    <label class="field">
+      <span class="field-label">Voice</span>
+      <select class="input" data-voice></select>
+    </label>
+    <label class="field">
+      <span class="field-label">Rate: <span data-rate-value>1.0</span></span>
+      <input class="input" type="range" min="0.5" max="2" step="0.1" value="1" data-rate />
+    </label>
+    <label class="field">
+      <span class="field-label">Pitch: <span data-pitch-value>1.0</span></span>
+      <input class="input" type="range" min="0.5" max="2" step="0.1" value="1" data-pitch />
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-speak>Speak</button>
+    <button class="btn" type="button" data-stop>Stop</button>
+    <button class="btn" type="button" data-record>Record</button>
+    <button class="btn" type="button" data-download disabled>Download recording</button>
+  </div>
+  <p class="muted" style="font-size:0.85rem">
+    Speech runs entirely on your device. Recording captures the speech output
+    where the browser allows it — some browsers record silence and can't be
+    captured by a web page.
+  </p>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { chunkSpeech } from "./tool.ts";
+  import { downloadBlob } from "@/lib/download";
+
+  const textEl = document.querySelector<HTMLTextAreaElement>("[data-text]")!;
+  const voiceEl = document.querySelector<HTMLSelectElement>("[data-voice]")!;
+  const rateEl = document.querySelector<HTMLInputElement>("[data-rate]")!;
+  const pitchEl = document.querySelector<HTMLInputElement>("[data-pitch]")!;
+  const rateValue = document.querySelector<HTMLSpanElement>("[data-rate-value]")!;
+  const pitchValue = document.querySelector<HTMLSpanElement>("[data-pitch-value]")!;
+  const speakBtn = document.querySelector<HTMLButtonElement>("[data-speak]")!;
+  const stopBtn = document.querySelector<HTMLButtonElement>("[data-stop]")!;
+  const recordBtn = document.querySelector<HTMLButtonElement>("[data-record]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
+
+  let voices: SpeechSynthesisVoice[] = [];
+  let recording = false;
+  let recorder: MediaRecorder | null = null;
+  let recorderChunks: Blob[] = [];
+  let recordStream: MediaStream | null = null;
+  let recordedBlob: Blob | null = null;
+  let audioCtx: AudioContext | null = null;
+
+  function setStatus(msg: string) {
+    out.innerHTML = "";
+    const el = document.createElement("div");
+    el.textContent = msg;
+    out.appendChild(el);
+  }
+
+  function populateVoices() {
+    voices = window.speechSynthesis?.getVoices() ?? [];
+    if (!voices.length) return;
+    const current = voiceEl.value;
+    voiceEl.innerHTML = "";
+    for (const v of voices) {
+      const opt = document.createElement("option");
+      opt.value = v.voiceURI;
+      opt.textContent = `${v.name} (${v.lang})`;
+      voiceEl.appendChild(opt);
+    }
+    if (current) voiceEl.value = current;
+  }
+
+  function speak() {
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    const text = textEl.value.trim();
+    if (!text) {
+      setStatus("Paste some text first.");
+      return;
+    }
+    const voice = voices.find((v) => v.voiceURI === voiceEl.value) ?? null;
+    for (const chunk of chunkSpeech(text)) {
+      const u = new SpeechSynthesisUtterance(chunk);
+      u.rate = Number(rateEl.value);
+      u.pitch = Number(pitchEl.value);
+      if (voice) u.voice = voice;
+      synth.speak(u);
+    }
+  }
+
+  function rmsOf(samples: Float32Array): number {
+    let sum = 0;
+    for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+    return samples.length ? Math.sqrt(sum / samples.length) : 0;
+  }
+
+  async function stopRecording() {
+    recording = false;
+    recordBtn.textContent = "Record";
+    const rec = recorder;
+    recorder = null;
+    if (rec && rec.state !== "inactive") rec.stop();
+  }
+
+  async function startRecording() {
+    if (typeof MediaRecorder === "undefined") {
+      setStatus("This browser has no MediaRecorder, so recording isn't available.");
+      return;
+    }
+    audioCtx ??= new AudioContext();
+    const dest = audioCtx.createMediaStreamDestination();
+    recordStream = dest.stream;
+    recorder = new MediaRecorder(recordStream);
+    recorderChunks = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) recorderChunks.push(e.data);
+    };
+    recorder.onstop = async () => {
+      recordedBlob = new Blob(recorderChunks, { type: recorder?.mimeType || "audio/webm" });
+      let silent = true;
+      try {
+        const buf = await audioCtx!.decodeAudioData(await recordedBlob.arrayBuffer());
+        silent = rmsOf(buf.getChannelData(0)) < 0.01;
+      } catch {
+        silent = true;
+      }
+      if (silent) {
+        downloadBtn.disabled = true;
+        setStatus(
+          "This browser captured silence — most browsers won't route speech output into a recorder. " +
+            "Play it through speakers and record with your OS, or use a screen recorder with audio.",
+        );
+      } else {
+        downloadBtn.disabled = false;
+        setStatus("Recording captured. You can download it now.");
+      }
+      if (recordStream) {
+        recordStream.getTracks().forEach((t) => t.stop());
+        recordStream = null;
+      }
+    };
+    recorder.start();
+    recording = true;
+    recordBtn.textContent = "Stop recording";
+    setStatus("Recording… click Speak, then Stop recording.");
+  }
+
+  speakBtn.addEventListener("click", speak);
+  stopBtn.addEventListener("click", () => window.speechSynthesis?.cancel());
+  recordBtn.addEventListener("click", () => (recording ? stopRecording() : startRecording()));
+  rateEl.addEventListener("input", () => (rateValue.textContent = rateEl.value));
+  pitchEl.addEventListener("input", () => (pitchValue.textContent = pitchEl.value));
+
+  downloadBtn.addEventListener("click", () => {
+    if (recordedBlob) downloadBlob(recordedBlob, "mr-speak." + (recordedBlob.type.includes("mp4") ? "m4a" : "webm"));
+  });
+
+  populateVoices();
+  if (window.speechSynthesis) {
+    window.speechSynthesis.onvoiceschanged = populateVoices;
+    window.speechSynthesis.getVoices();
+  }
+</script>

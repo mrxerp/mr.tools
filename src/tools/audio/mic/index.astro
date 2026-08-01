@@ -1,0 +1,173 @@
+---
+// mr.mic — live mic level meter with noise-floor and clipping feedback.
+---
+<section class="stage">
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-start>Start microphone</button>
+    <button class="btn" type="button" data-stop disabled>Stop</button>
+  </div>
+
+  <label class="field">
+    <span class="field-label">Level</span>
+    <div class="meter">
+      <div class="meter-fill" data-fill></div>
+      <div class="meter-peak" data-peak-marker></div>
+    </div>
+    <div class="readouts">
+      <span>RMS: <span data-rms>—</span></span>
+      <span>Peak: <span data-peak>—</span></span>
+      <span>Noise floor: <span data-floor>—</span></span>
+    </div>
+  </label>
+
+  <output class="output-box" data-alert aria-live="polite"></output>
+  <p class="muted" style="font-size:0.85rem">
+    Nothing is recorded or uploaded — the audio stays in your browser for
+    the meter only.
+  </p>
+  <p class="error-text" data-error style="display:none"></p>
+</section>
+
+<style>
+  .meter {
+    position: relative;
+    height: 1.4rem;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .meter-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--ok), var(--warn) 70%, var(--danger) 92%);
+  }
+  .meter-peak {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 2px;
+    background: var(--ink);
+    opacity: 0.55;
+  }
+  .readouts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 0.4rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+</style>
+
+<script>
+  import { rmsLevel, peakLevel, toDb, isClipping, estimateNoiseFloor } from "./tool.ts";
+
+  const startBtn = document.querySelector<HTMLButtonElement>("[data-start]")!;
+  const stopBtn = document.querySelector<HTMLButtonElement>("[data-stop]")!;
+  const fill = document.querySelector<HTMLDivElement>("[data-fill]")!;
+  const peakMarker = document.querySelector<HTMLDivElement>("[data-peak-marker]")!;
+  const rmsEl = document.querySelector<HTMLSpanElement>("[data-rms]")!;
+  const peakEl = document.querySelector<HTMLSpanElement>("[data-peak]")!;
+  const floorEl = document.querySelector<HTMLSpanElement>("[data-floor]")!;
+  const alertOut = document.querySelector<HTMLOutputElement>("[data-alert]")!;
+  const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
+
+  let ctx: AudioContext | null = null;
+  let analyser: AnalyserNode | null = null;
+  let stream: MediaStream | null = null;
+  let raf = 0;
+  let running = false;
+  let clipCount = 0;
+  let floorSettled = false;
+  const floorSamples: number[] = [];
+
+  function setError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+
+  async function start() {
+    setError("");
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setError("Microphone access was denied or is unavailable.");
+      return;
+    }
+    ctx = new AudioContext();
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    const src = ctx.createMediaStreamSource(stream);
+    src.connect(analyser);
+    clipCount = 0;
+    floorSamples.length = 0;
+    floorSettled = false;
+    running = true;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    tick();
+  }
+
+  function stop() {
+    running = false;
+    cancelAnimationFrame(raf);
+    stream?.getTracks().forEach((t) => t.stop());
+    stream = null;
+    if (ctx && ctx.state !== "closed") void ctx.close();
+    ctx = null;
+    analyser = null;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    fill.style.width = "0%";
+    peakMarker.style.left = "0%";
+    rmsEl.textContent = "—";
+    peakEl.textContent = "—";
+    alertOut.innerHTML = "";
+  }
+
+  function setAlert(text: string, isError = false) {
+    alertOut.innerHTML = "";
+    const el = document.createElement("div");
+    if (isError) el.className = "error-text";
+    el.textContent = text;
+    alertOut.appendChild(el);
+  }
+
+  function tick() {
+    if (!running || !analyser) return;
+    const buf = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(buf);
+    const rms = rmsLevel(buf);
+    const peak = peakLevel(buf);
+
+    if (floorSamples.length < 300) floorSamples.push(rms);
+    if (floorSamples.length === 300 && !floorSettled) {
+      floorSettled = true;
+      const db = toDb(estimateNoiseFloor(floorSamples));
+      floorEl.textContent = db <= -90 || !isFinite(db) ? "quiet" : `${Math.round(db)} dB`;
+    }
+
+    const db = toDb(rms);
+    rmsEl.textContent = !isFinite(db) || db <= -90 ? "-∞" : `${Math.round(db)} dB`;
+    peakEl.textContent = `${Math.round(peak * 100)}%`;
+
+    const pct = Math.min(100, rms * 400);
+    fill.style.width = `${pct}%`;
+    peakMarker.style.left = `${Math.min(100, peak * 100)}%`;
+
+    if (isClipping(peak)) {
+      clipCount++;
+      setAlert(`Clipping detected — lower the input gain (${clipCount} hit${clipCount === 1 ? "" : "s"}).`, true);
+    } else if (clipCount === 0 && rms > 0) {
+      setAlert("Level looks good — no clipping and signal is audible.");
+    }
+
+    raf = requestAnimationFrame(tick);
+  }
+
+  startBtn.addEventListener("click", start);
+  stopBtn.addEventListener("click", stop);
+  window.addEventListener("beforeunload", stop);
+</script>

@@ -1,0 +1,95 @@
+---
+---
+<section class="stage">
+  <h2>mr.name</h2>
+  <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem">Find color names from HEX values — candy, brand, crayon, scientific, nature, fun styles.</p>
+
+  <div class="field">
+    <span class="field-label">Color (HEX)</span>
+    <input class="input" type="text" placeholder="#ff6b35" data-hex />
+  </div>
+
+  <div class="field">
+    <span class="field-label">Naming Style</span>
+    <select class="input" data-style>
+      <option value="all">All Styles</option>
+      <option value="candy">Candy</option>
+      <option value="brand">Brand</option>
+      <option value="crayon">Crayon</option>
+      <option value="scientific">Scientific</option>
+      <option value="nature">Nature</option>
+      <option value="fun">Fun</option>
+    </select>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-go>Find Name</button>
+    <button class="btn" data-copy style="display:none">Copy Name</button>
+  </div>
+
+  <div class="output-box" data-result style="display:none;max-height:300px;overflow:auto"></div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { nameColor, nameColorAllStyles, formatBytes } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const hexInput = document.querySelector<HTMLInputElement>("[data-hex]")!;
+  const styleSel = document.querySelector<HTMLSelectElement>("[data-style]")!;
+  const goBtn = document.querySelector<HTMLButtonElement>("[data-go]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const resultBox = document.querySelector<HTMLElement>("[data-result]")!;
+  const outBox = document.querySelector<HTMLElement>("[data-out]")!;
+
+  let lastResult: string = "";
+
+  function analyze() {
+    const hex = hexInput.value.trim();
+    const style = styleSel.value as "all" | "candy" | "brand" | "crayon" | "scientific" | "nature" | "fun";
+    if (!hex) return;
+
+    try {
+      let result: any;
+      if (style === "all") {
+        result = nameColorAllStyles(hex);
+      } else {
+        result = nameColor(hex, style);
+      }
+
+      if (!result) throw new Error("Invalid color format");
+
+      let html = "";
+      const names = Array.isArray(result) ? result : [result];
+      for (const nc of names) {
+        html += `<strong>${nc.name}</strong> (${nc.style}) — ${nc.hex}<br>`;
+        if (nc.distance !== undefined) {
+          html += `Distance: ${nc.distance.toFixed(2)}<br>`;
+        }
+        html += `<br>`;
+      }
+
+      lastResult = names.map(n => `${n.name} (${n.style})`).join(", ");
+      resultBox.style.display = "block";
+      resultBox.innerHTML = html;
+      copyBtn.style.display = "";
+      outBox.textContent = `Found ${names.length} name${names.length !== 1 ? "s" : ""}`;
+      outBox.className = "output-box ok-text";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  }
+
+  goBtn.addEventListener("click", analyze);
+  hexInput.addEventListener("input", () => { if (hexInput.value.length >= 4) analyze(); });
+
+  copyBtn.addEventListener("click", () => {
+    if (lastResult) copyTextWithFeedback(lastResult, copyBtn);
+  });
+</script>
+
+<style>
+  .drop-zone.drag { border-color: var(--accent); background: var(--accent-soft); }
+</style>

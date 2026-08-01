@@ -1,0 +1,226 @@
+---
+---
+<section class="stage">
+  <h2>mr.json</h2>
+  <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem">Filter, query, and transform JSON with JSONPath, table view, and CSV export.</p>
+
+  <div class="field">
+    <span class="field-label">JSON Input</span>
+    <textarea class="input" rows="10" placeholder="Paste JSON or drop file…" data-input></textarea>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Or drop JSON file</span>
+    <div class="drop-zone" data-zone>
+      <input type="file" class="input" style="display:none" accept=".json" data-file />
+      <div class="dz-title">Drop JSON file or click to browse</div>
+      <div class="dz-hint">JSON files only</div>
+    </div>
+  </div>
+
+  <div class="field" data-options style="display:none">
+    <span class="field-label">JSONPath Query</span>
+    <input class="input" placeholder="$.store.book[*].author" data-query />
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-query-btn style="display:none">Run Query</button>
+    <button class="btn" data-format style="display:none">Format JSON</button>
+    <button class="btn" data-minify style="display:none">Minify JSON</button>
+    <button class="btn" data-csv style="display:none">Export CSV</button>
+    <button class="btn" data-download style="display:none">Download</button>
+  </div>
+
+  <div class="output-box" data-preview style="display:none;max-height:400px;overflow:auto"></div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { parseJson, stringifyJson, minifyJson, queryJsonPath, jsonToCsv, getTableColumns, formatJsonValue } from "./tool.ts";
+  import { downloadText } from "@/lib/download";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const zone = document.querySelector<HTMLElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const optionsDiv = document.querySelectorAll<HTMLElement>("[data-options]");
+  const queryInput = document.querySelector<HTMLInputElement>("[data-query]")!;
+  const queryBtn = document.querySelector<HTMLButtonElement>("[data-query-btn]")!;
+  const formatBtn = document.querySelector<HTMLButtonElement>("[data-format]")!;
+  const minifyBtn = document.querySelector<HTMLButtonElement>("[data-minify]")!;
+  const csvBtn = document.querySelector<HTMLButtonElement>("[data-csv]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const previewBox = document.querySelector<HTMLElement>("[data-preview]")!;
+  const outBox = document.querySelector<HTMLElement>("[data-out]")!;
+
+  let jsonData: any = null;
+  let lastResult: string = "";
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer?.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files?.[0]) handleFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  async function handleFile(file: File) {
+    const text = await file.text();
+    input.value = text;
+    parseInput();
+  }
+
+  input.addEventListener("input", () => parseInput());
+
+  function parseInput() {
+    const text = input.value.trim();
+    if (!text) {
+      optionsDiv.forEach(d => d.style.display = "none");
+      return;
+    }
+
+    try {
+      jsonData = parseJson(text);
+      optionsDiv.forEach(d => d.style.display = "");
+      formatBtn.style.display = "";
+      minifyBtn.style.display = "";
+      queryBtn.style.display = "";
+      csvBtn.style.display = "";
+      downloadBtn.style.display = "none";
+      previewBox.style.display = "none";
+
+      outBox.textContent = `Valid JSON parsed`;
+      outBox.className = "output-box ok-text";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  }
+
+  function showResult(result: string) {
+    lastResult = result;
+    previewBox.style.display = "block";
+    previewBox.innerHTML = "";
+
+    const pre = document.createElement("pre");
+    pre.style.fontFamily = "var(--mono)";
+    pre.style.fontSize = "0.8rem";
+    pre.style.whiteSpace = "pre-wrap";
+    pre.textContent = result.slice(0, 10000);
+    previewBox.appendChild(pre);
+
+    downloadBtn.style.display = "";
+    outBox.textContent = `Result: ${result.length} chars`;
+    outBox.className = "output-box ok-text";
+  }
+
+  function showTable(data: any) {
+    if (!Array.isArray(data) || data.length === 0) {
+      outBox.textContent = "Not an array of objects";
+      outBox.className = "output-box error-text";
+      return;
+    }
+
+    const columns = getTableColumns(data);
+    if (!columns.length) return;
+
+    const table = document.createElement("table");
+    table.style.width = "100%";
+    table.style.borderCollapse = "collapse";
+    table.style.fontSize = "0.8rem";
+
+    const headerRow = document.createElement("tr");
+    columns.forEach(col => {
+      const th = document.createElement("th");
+      th.style.border = "1px solid var(--border)";
+      th.style.padding = "0.3rem";
+      th.textContent = col.header;
+      headerRow.appendChild(th);
+    });
+    table.appendChild(headerRow);
+
+    data.slice(0, 50).forEach(row => {
+      const tr = document.createElement("tr");
+      columns.forEach(col => {
+        const td = document.createElement("td");
+        td.style.border = "1px solid var(--border)";
+        td.style.padding = "0.3rem";
+        const val = col.key.split(".").reduce((o, k) => o?.[k], row);
+        td.textContent = formatJsonValue(val);
+        tr.appendChild(td);
+      });
+      table.appendChild(tr);
+    });
+
+    previewBox.style.display = "block";
+    previewBox.innerHTML = "";
+    previewBox.appendChild(table);
+
+    if (data.length > 50) {
+      const note = document.createElement("div");
+      note.style.fontSize = "0.8rem";
+      note.style.color = "var(--muted)";
+      note.style.marginTop = "0.5rem";
+      note.textContent = `Showing 50 of ${data.length} rows`;
+      previewBox.appendChild(note);
+    }
+
+    downloadBtn.style.display = "";
+    outBox.textContent = `Table: ${data.length} rows, ${columns.length} columns`;
+    outBox.className = "output-box ok-text";
+  }
+
+  formatBtn.addEventListener("click", () => {
+    if (!jsonData) return;
+    showResult(stringifyJson(jsonData));
+  });
+
+  minifyBtn.addEventListener("click", () => {
+    if (!jsonData) return;
+    showResult(minifyJson(jsonData));
+  });
+
+  queryBtn.addEventListener("click", () => {
+    if (!jsonData) return;
+    const path = queryInput.value.trim() || "$";
+    try {
+      const results = queryJsonPath(jsonData, path);
+      if (results.length === 1 && results[0].path === "$") {
+        showResult(stringifyJson(results[0].value));
+      } else if (results.length > 0 && typeof results[0].value === "object" && !Array.isArray(results[0].value)) {
+        showTable(results.map(r => r.value));
+      } else {
+        showResult(stringifyJson(results.map(r => ({ path: r.path, value: r.value }))));
+      }
+    } catch (e) {
+      outBox.textContent = `Query error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  });
+
+  csvBtn.addEventListener("click", () => {
+    if (!jsonData) return;
+    try {
+      const csv = jsonToCsv(jsonData);
+      showResult(csv);
+    } catch (e) {
+      outBox.textContent = `CSV error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    if (!lastResult) return;
+    downloadText(lastResult, "result.json", "application/json");
+  });
+</script>
+
+<style>
+  .drop-zone.drag { border-color: var(--accent); background: var(--accent-soft); }
+  table { font-family: var(--mono); }
+</style>

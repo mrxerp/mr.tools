@@ -1,0 +1,273 @@
+---
+// mr.meeting — overlap working hours across timezones and share a slot.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label class="field">
+      <span class="field-label">Meeting date</span>
+      <input class="input" type="date" data-date />
+    </label>
+    <label class="field">
+      <span class="field-label">Working hours</span>
+      <select class="input" data-start></select>
+    </label>
+    <label class="field">
+      <span class="field-label">Until</span>
+      <select class="input" data-end></select>
+    </label>
+    <label class="field">
+      <span class="field-label">Slot length</span>
+      <select class="input" data-step>
+        <option value="15">15 min</option>
+        <option value="30" selected>30 min</option>
+        <option value="60">60 min</option>
+      </select>
+    </label>
+  </div>
+  <div class="meet-zones" data-zones></div>
+  <p class="muted">Rows are local times in the first zone; green cells are within working hours in that zone.</p>
+  <div class="meet-scroll">
+    <table class="meet-table" data-table></table>
+  </div>
+  <output class="output-box" data-slot aria-live="polite"></output>
+  <div class="actions">
+    <button class="btn" type="button" data-copy hidden>Copy meeting link</button>
+  </div>
+</section>
+
+<style>
+  .meet-zones {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-block: 0.2rem 0.8rem;
+  }
+  .meet-zone {
+    font: inherit;
+    font-size: 0.85rem;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 0.3rem 0.75rem;
+  }
+  .meet-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+  .meet-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.85rem;
+  }
+  .meet-table th,
+  .meet-table td {
+    border-bottom: 1px solid var(--border);
+    padding: 0.35rem 0.6rem;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .meet-table th {
+    background: var(--bg);
+    font-size: 0.78rem;
+  }
+  .meet-table td.time {
+    font-family: var(--mono);
+  }
+  .meet-table tr.slot {
+    cursor: pointer;
+  }
+  .meet-table tr.slot:hover {
+    background: var(--accent-soft);
+  }
+  .meet-table tr.slot.selected {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .meet-table td.working {
+    background: color-mix(in srgb, var(--ok) 16%, var(--surface));
+    color: var(--ok);
+    font-weight: 700;
+  }
+  .meet-table td.not {
+    color: var(--faint);
+  }
+</style>
+
+<script>
+  import {
+    meetingShareUrl,
+    parseMeetingParams,
+    slotGrid,
+    type SlotRow,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const dateEl = document.querySelector<HTMLInputElement>("[data-date]")!;
+  const startEl = document.querySelector<HTMLSelectElement>("[data-start]")!;
+  const endEl = document.querySelector<HTMLSelectElement>("[data-end]")!;
+  const stepEl = document.querySelector<HTMLSelectElement>("[data-step]")!;
+  const zonesEl = document.querySelector<HTMLDivElement>("[data-zones]")!;
+  const tableEl = document.querySelector<HTMLTableElement>("[data-table]")!;
+  const slotEl = document.querySelector<HTMLOutputElement>("[data-slot]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  if (!dateEl || !startEl || !endEl || !stepEl || !zonesEl || !tableEl || !slotEl || !copyBtn) {
+    throw new Error("mr.meeting mount failed");
+  }
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  let zones = ["Europe/London", "America/New_York", "Asia/Tokyo"];
+  let selected: { hour: number; minute: number } | null = null;
+
+  for (let h = 6; h <= 10; h++) {
+    const o = document.createElement("option");
+    o.value = String(h);
+    o.textContent = `${pad(h)}:00`;
+    startEl.appendChild(o);
+  }
+  startEl.value = "9";
+  for (let h = 16; h <= 22; h++) {
+    const o = document.createElement("option");
+    o.value = String(h);
+    o.textContent = `${pad(h)}:00`;
+    endEl.appendChild(o);
+  }
+  endEl.value = "17";
+
+  function renderZones() {
+    zonesEl.innerHTML = "";
+    for (const z of zones) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "meet-zone";
+      btn.textContent = z;
+      btn.addEventListener("click", () => {
+        zones = zones.filter((x) => x !== z);
+        renderZones();
+        render();
+      });
+      zonesEl.appendChild(btn);
+    }
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "btn";
+    add.textContent = "+ Add zone";
+    add.addEventListener("click", () => {
+      const z = prompt("IANA timezone (e.g. Asia/Kolkata):");
+      if (z && z.trim() && zones.length < 4 && !zones.includes(z.trim())) {
+        zones.push(z.trim());
+        renderZones();
+        render();
+      }
+    });
+    zonesEl.appendChild(add);
+    if (zones.length <= 2) {
+      const hint = document.createElement("span");
+      hint.className = "muted";
+      hint.style.fontSize = "0.8rem";
+      hint.textContent = " (add 1–2 more zones)";
+      zonesEl.appendChild(hint);
+    }
+  }
+
+  function render() {
+    const date = dateEl.value ? new Date(dateEl.value) : new Date();
+    const opts = {
+      startHour: Number(startEl.value),
+      endHour: Number(endEl.value),
+      stepMinutes: Number(stepEl.value),
+    };
+    tableEl.innerHTML = "";
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    const first = document.createElement("th");
+    first.textContent = `${zones[0]} local`;
+    headRow.appendChild(first);
+    for (const z of zones) {
+      const th = document.createElement("th");
+      th.textContent = z;
+      headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+    tableEl.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    const rows = slotGrid(date, zones, opts);
+    for (const row of rows) {
+      const tr = document.createElement("tr");
+      tr.className = "slot";
+      const time = document.createElement("td");
+      time.className = "time";
+      time.textContent = row.refLocal;
+      tr.appendChild(time);
+      for (const cell of row.cells) {
+        const td = document.createElement("td");
+        td.textContent = cell.local;
+        td.className = cell.working ? "working" : "not";
+        tr.appendChild(td);
+      }
+      if (row.allWorking) {
+        tr.addEventListener("click", () => {
+          const [h, m] = row.refLocal.split(":").map(Number);
+          selected = { hour: h, minute: m };
+          render();
+        });
+      }
+      const [h, m] = row.refLocal.split(":").map(Number);
+      if (selected && selected.hour === h && selected.minute === m) tr.classList.add("selected");
+      tbody.appendChild(tr);
+    }
+    tableEl.appendChild(tbody);
+
+    if (selected) {
+      const sel = selected;
+      const [h, m] = [String(sel.hour).padStart(2, "0"), String(sel.minute).padStart(2, "0")];
+      const times = zones
+        .map((z) => `${z}: ${rowLocal(rows, sel, z)}`)
+        .join("\n");
+      slotEl.textContent = `Selected slot ${h}:${m} in ${zones[0]}:\n${times}\n\nCopy the link below to share this exact time.`;
+      copyBtn.hidden = false;
+    } else {
+      slotEl.textContent = "";
+      copyBtn.hidden = true;
+    }
+  }
+
+  function rowLocal(rows: SlotRow[], sel: { hour: number; minute: number }, zone: string) {
+    const row = rows.find(
+      (r) => r.refLocal === `${pad(sel.hour)}:${pad(sel.minute)}`,
+    );
+    return row ? (row.cells.find((c) => c.zone === zone)?.local ?? "?") : "?";
+  }
+
+  function selectedDate(): Date {
+    return dateEl.value ? new Date(dateEl.value) : new Date();
+  }
+
+  copyBtn.addEventListener("click", () => {
+    if (!selected) return;
+    copyTextWithFeedback(
+      meetingShareUrl(
+        `${location.origin}${location.pathname}`,
+        selectedDate(),
+        selected.hour,
+        selected.minute,
+        zones,
+      ),
+      copyBtn,
+    );
+  });
+
+  const params = parseMeetingParams(location.search);
+  if (params) {
+    zones = params.zones.slice(0, 4);
+    dateEl.value = `${params.date.getFullYear()}-${pad(params.date.getMonth() + 1)}-${pad(params.date.getDate())}`;
+    selected = { hour: params.hour, minute: params.minute };
+  } else {
+    dateEl.value = new Date().toISOString().slice(0, 10);
+  }
+
+  for (const el of [dateEl, startEl, endEl, stepEl]) el.addEventListener("input", render);
+  renderZones();
+  render();
+</script>

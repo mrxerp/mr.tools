@@ -1,0 +1,253 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose CSV or XLSX file for pivot table">
+    <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-input hidden />
+    <span class="dz-title">Drop a CSV or XLSX file here or click to browse</span>
+    <span class="dz-hint">Build a pivot table from your spreadsheet data.</span>
+  </div>
+
+  <fieldset class="field" data-options style="display:none;margin-top:1rem">
+    <legend class="field-label">Pivot configuration</legend>
+
+    <label class="field" style="margin:0.5rem 0">
+      <span class="field-label">Row fields (comma-separated)</span>
+      <input type="text" class="input" placeholder="e.g. region,product" data-rows />
+    </label>
+
+    <label class="field" style="margin:0.5rem 0">
+      <span class="field-label">Column fields (comma-separated, optional)</span>
+      <input type="text" class="input" placeholder="e.g. month" data-cols />
+    </label>
+
+    <div data-values style="margin:0.5rem 0">
+      <div class="field-label">Value fields</div>
+      <div data-value-list style="display:grid;gap:0.5rem"></div>
+      <button type="button" class="btn" data-add-value style="margin-top:0.5rem">Add value field</button>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <span style="width:100px">Output:</span>
+      <select class="input" data-format style="flex:1;max-width:200px">
+        <option value="csv">CSV</option>
+        <option value="xlsx">XLSX</option>
+      </select>
+    </label>
+  </fieldset>
+
+  <div class="actions" style="margin-top:1rem">
+    <button type="button" class="btn btn-primary" data-run disabled>Build pivot</button>
+    <button type="button" class="btn" data-download-csv hidden>Download CSV</button>
+    <button type="button" class="btn" data-download-xlsx hidden>Download XLSX</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+
+  <details data-preview style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Preview (first 50 rows)</summary>
+    <div style="overflow:auto;max-height:300px;border:1px solid var(--border);border-radius:var(--radius-sm)" data-preview-content></div>
+  </details>
+</section>
+
+<style>
+  .value-row { display:flex;gap:0.5rem;align-items:center; }
+  .value-row select { flex:1;max-width:180px; }
+  .value-row input { flex:1;max-width:140px; }
+  .pivot-grid { display:grid;gap:0;font-family:var(--mono);font-size:0.8rem; }
+  .pivot-header { background:var(--accent-soft);font-weight:600; }
+  .pivot-cell { padding:0.2rem 0.4rem;border:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px; }
+  .pivot-row-label { background:var(--bg);font-weight:600;padding:0.2rem 0.4rem;border:1px solid var(--border); }
+  .pivot-total { background:#fff8e1;font-weight:600; }
+</style>
+
+<script>
+  import { buildPivot, pivotToCSV, pivotToXLSX } from "./tool.ts";
+  import { readFileAsArrayBuffer, readFileAsText, formatBytes, swapExtension, fileNameOf } from "@/lib/files";
+  import { downloadText, downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const opts = document.querySelector<HTMLFieldSetElement>("[data-options]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const dlCsv = document.querySelector<HTMLButtonElement>("[data-download-csv]");
+  const dlXlsx = document.querySelector<HTMLButtonElement>("[data-download-xlsx]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  const preview = document.querySelector<HTMLDivElement>("[data-preview-content]");
+  const rowsInput = document.querySelector<HTMLInputElement>("[data-rows]");
+  const colsInput = document.querySelector<HTMLInputElement>("[data-cols]");
+  const valueList = document.querySelector<HTMLDivElement>("[data-value-list]");
+  const addValue = document.querySelector<HTMLButtonElement>("[data-add-value]");
+  const formatSel = document.querySelector<HTMLSelectElement>("[data-format]");
+
+  if (!zone || !input || !opts || !run || !dlCsv || !dlXlsx || !out || !preview ||
+      !rowsInput || !colsInput || !valueList || !addValue || !formatSel) {
+    throw new Error("mr pivot mount failed");
+  }
+
+  let file: File | null = null;
+  let isXlsx = false;
+  let headers: string[] = [];
+  let lastResult: Awaited<ReturnType<typeof buildPivot>> | null = null;
+  let lastXlsx: Uint8Array | null = null;
+  let valueCount = 0;
+
+  const addValueRow = (field = "", agg = "sum") => {
+    const id = valueCount++;
+    const row = document.createElement("div");
+    row.className = "value-row";
+    row.innerHTML = `
+      <select class="input" data-vfield-${id}>
+        ${headers.map(h => `<option value="${h}" ${h === field ? "selected" : ""}>${h}</option>`).join("")}
+      </select>
+      <select class="input" data-vagg-${id}>
+        <option value="sum" ${agg === "sum" ? "selected" : ""}>Sum</option>
+        <option value="count" ${agg === "count" ? "selected" : ""}>Count</option>
+        <option value="avg" ${agg === "avg" ? "selected" : ""}>Average</option>
+        <option value="min" ${agg === "min" ? "selected" : ""}>Min</option>
+        <option value="max" ${agg === "max" ? "selected" : ""}>Max</option>
+      </select>
+      <button type="button" class="btn" data-vremove-${id} style="padding:0.3rem 0.6rem;font-size:0.8rem">Remove</button>
+    `;
+    valueList.appendChild(row);
+    row.querySelector(`[data-vremove-${id}]`)!.addEventListener("click", () => row.remove());
+  };
+
+  const getConfig = () => {
+    const rows = rowsInput.value.split(",").map(s => s.trim()).filter(Boolean);
+    const cols = colsInput.value.split(",").map(s => s.trim()).filter(Boolean);
+    const values: { field: string; agg: "sum" | "count" | "avg" | "min" | "max" }[] = [];
+    for (let i = 0; i < valueCount; i++) {
+      const fieldSel = valueList.querySelector<HTMLSelectElement>(`[data-vfield-${i}]`);
+      const aggSel = valueList.querySelector<HTMLSelectElement>(`[data-vagg-${i}]`);
+      if (fieldSel && aggSel && fieldSel.value) {
+        values.push({ field: fieldSel.value, agg: aggSel.value as any });
+      }
+    }
+    return { rows, cols, values };
+  };
+
+  const populateHeaders = (hs: string[]) => {
+    headers = hs;
+    for (let i = 0; i < valueCount; i++) {
+      const sel = valueList.querySelector<HTMLSelectElement>(`[data-vfield-${i}]`);
+      if (sel) {
+        const val = sel.value;
+        sel.innerHTML = headers.map(h => `<option value="${h}" ${h === val ? "selected" : ""}>${h}</option>`).join("");
+      }
+    }
+  };
+
+  const renderPreview = (result: Awaited<ReturnType<typeof buildPivot>>) => {
+    const maxRows = 50;
+    const displayRows = result.rows.slice(0, maxRows);
+    let html = `<table class="pivot-grid" style="border-collapse:collapse;width:100%"><thead><tr>`;
+    for (const h of result.headers) {
+      html += `<th class="pivot-cell pivot-header">${h}</th>`;
+    }
+    html += `</tr></thead><tbody>`;
+    for (const row of displayRows) {
+      html += `<tr>`;
+      for (let i = 0; i < row.length; i++) {
+        const cls = i < (result.config.rows.length || 1) ? "pivot-cell pivot-row-label" :
+                    (typeof row[i] === "number" && row[i] === 0 ? "pivot-cell" :
+                     (result.rows.indexOf(row) === result.rows.length - 1 ? "pivot-cell pivot-total" : "pivot-cell"));
+        html += `<td class="${cls}">${row[i]}</td>`;
+      }
+      html += `</tr>`;
+    }
+    html += `</tbody></table>`;
+    if (result.rows.length > maxRows) {
+      html += `<div class="muted" style="padding:0.5rem">Showing ${maxRows} of ${result.rows.length} rows.</div>`;
+    }
+    preview.innerHTML = html;
+  };
+
+  const addFile = async (f: File) => {
+    file = f;
+    isXlsx = f.name.toLowerCase().endsWith(".xlsx") || f.type.includes("spreadsheetml");
+    opts.style.display = "";
+    run.disabled = false;
+    out.textContent = `Ready: ${f.name} (${formatBytes(f.size)})`;
+    preview.innerHTML = "";
+    dlCsv.hidden = dlXlsx.hidden = true;
+    lastResult = null;
+    lastXlsx = null;
+    valueList.innerHTML = "";
+    valueCount = 0;
+
+    try {
+      if (isXlsx) {
+        const buf = await readFileAsArrayBuffer(f);
+        const XLSX = await import("xlsx");
+        const wb = XLSX.read(buf, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as string[][];
+        headers = json[0] || [];
+      } else {
+        const text = await readFileAsText(f);
+        const lines = text.split(/\r?\n/);
+        const firstLine = lines[0] || "";
+        const delim = [",", "\t", ";", "|"].find(d => firstLine.includes(d)) || ",";
+        headers = firstLine.split(delim).map(h => h.replace(/^"|"$/g, "").trim());
+      }
+      populateHeaders(headers);
+      addValueRow();
+    } catch {
+      out.innerHTML = '<div class="error-text">Failed to read file.</div>';
+      run.disabled = true;
+    }
+  };
+
+  const doPivot = async () => {
+    if (!file) return;
+    run.disabled = true;
+    out.textContent = "Building pivot table…";
+    try {
+      let data: string | Uint8Array;
+      if (isXlsx) data = await readFileAsArrayBuffer(file);
+      else data = await readFileAsText(file);
+
+      const config = getConfig();
+      if (config.values.length === 0) throw new Error("Add at least one value field");
+      if (config.rows.length === 0 && config.cols.length === 0) throw new Error("Select at least one row or column field");
+
+      lastResult = await buildPivot(data, isXlsx, config);
+
+      if (formatSel.value === "xlsx") {
+        lastXlsx = await pivotToXLSX(lastResult);
+        out.textContent = `Pivot built: ${lastResult.rows.length} rows × ${lastResult.headers.length} cols · XLSX ${formatBytes(lastXlsx.length)}`;
+      } else {
+        out.textContent = `Pivot built: ${lastResult.rows.length} rows × ${lastResult.headers.length} cols`;
+      }
+      renderPreview(lastResult);
+      dlCsv.hidden = dlXlsx.hidden = false;
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Pivot failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = !file;
+    }
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  input.addEventListener("change", () => { if (input.files?.[0]) addFile(input.files[0]); input.value = ""; });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("drag"); if (e.dataTransfer?.files?.[0]) addFile(e.dataTransfer.files[0]); });
+
+  addValue.addEventListener("click", () => addValueRow());
+
+  run.addEventListener("click", doPivot);
+
+  dlCsv.addEventListener("click", () => {
+    if (lastResult && file) downloadText(pivotToCSV(lastResult), swapExtension(fileNameOf(file), "csv"), "text/csv");
+  });
+
+  dlXlsx.addEventListener("click", () => {
+    if (lastXlsx && file) downloadArrayBuffer(lastXlsx, swapExtension(fileNameOf(file), "xlsx"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  });
+</script>

@@ -1,0 +1,237 @@
+---
+// mr hash — HashDock. Instant hashing for text and files.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Input Type</span>
+    <select class="input" data-input-type>
+      <option value="text">Text</option>
+      <option value="file">File</option>
+    </select>
+  </div>
+
+  <div class="field" data-text-input>
+    <span class="field-label">Text</span>
+    <textarea class="input" rows="4" placeholder="Paste or type text to hash…" data-text></textarea>
+  </div>
+
+  <div class="field" data-file-input style="display: none;">
+    <div class="drop-zone" data-drop-zone>
+      <input type="file" id="file-input" hidden data-file />
+      <div class="dz-title">Drop a file or click to browse</div>
+      <div class="dz-hint">Hashes computed locally — file never leaves your browser</div>
+    </div>
+    <div class="muted" style="font-size: 0.8rem;" data-file-info></div>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Algorithms</span>
+    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+      <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+        <input type="checkbox" value="MD5" checked data-algo> MD5
+      </label>
+      <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+        <input type="checkbox" value="SHA-1" checked data-algo> SHA-1
+      </label>
+      <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+        <input type="checkbox" value="SHA-256" checked data-algo> SHA-256
+      </label>
+      <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+        <input type="checkbox" value="SHA-384" data-algo> SHA-384
+      </label>
+      <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+        <input type="checkbox" value="SHA-512" data-algo> SHA-512
+      </label>
+    </div>
+  </div>
+
+  <div class="field" data-hmac-field style="display: none;">
+    <span class="field-label">HMAC Key (optional)</span>
+    <input class="input" type="text" placeholder="Enter HMAC key…" data-hmac-key />
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-compute>Compute Hashes</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));" data-results></div>
+
+  <output class="output-box error-text" data-error style="display: none;"></output>
+</section>
+
+<script>
+  import { computeHashes, computeFileHashesIncremental } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { formatBytes } from "@/lib/files";
+
+  const inputType = document.querySelector<HTMLSelectElement>("[data-input-type]")!;
+  const textInput = document.querySelector<HTMLDivElement>("[data-text-input]")!;
+  const fileInput = document.querySelector<HTMLDivElement>("[data-file-input]")!;
+  const textArea = document.querySelector<HTMLTextAreaElement>("[data-text]")!;
+  const dropZone = document.querySelector<HTMLDivElement>("[data-drop-zone]")!;
+  const fileInputEl = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const fileInfo = document.querySelector<HTMLDivElement>("[data-file-info]")!;
+  const algoCheckboxes = document.querySelectorAll<HTMLInputElement>("[data-algo]");
+  const hmacField = document.querySelector<HTMLDivElement>("[data-hmac-field]")!;
+  const hmacKeyInput = document.querySelector<HTMLInputElement>("[data-hmac-key]")!;
+  const computeBtn = document.querySelector<HTMLButtonElement>("[data-compute]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const results = document.querySelector<HTMLDivElement>("[data-results]")!;
+  const errorBox = document.querySelector<HTMLOutputElement>("[data-error]")!;
+
+  if (!inputType || !textInput || !fileInput || !textArea || !dropZone || !fileInputEl || !fileInfo || !hmacField || !hmacKeyInput || !computeBtn || !clearBtn || !results || !errorBox) {
+    throw new Error("mr hash mount failed");
+  }
+
+  let currentFile: File | null = null;
+
+  function showError(msg: string) {
+    errorBox.textContent = msg;
+    errorBox.style.display = "block";
+  }
+
+  function clearError() {
+    errorBox.textContent = "";
+    errorBox.style.display = "none";
+  }
+
+  function getSelectedAlgorithms(): ("MD5" | "SHA-1" | "SHA-256" | "SHA-384" | "SHA-512")[] {
+    return Array.from(algoCheckboxes)
+      .filter((cb) => cb.checked)
+      .map((cb) => cb.value as "MD5" | "SHA-1" | "SHA-256" | "SHA-384" | "SHA-512");
+  }
+
+  function updateUI() {
+    const isFile = inputType.value === "file";
+    textInput.style.display = isFile ? "none" : "block";
+    fileInput.style.display = isFile ? "block" : "none";
+    hmacField.style.display = "block";
+    clearError();
+  }
+
+  inputType.addEventListener("change", updateUI);
+
+  dropZone.addEventListener("click", () => fileInputEl.click());
+  dropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropZone.classList.add("drag");
+  });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag"));
+  dropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("drag");
+    if (e.dataTransfer.files.length > 0) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+  fileInputEl.addEventListener("change", () => {
+    if (fileInputEl.files && fileInputEl.files.length > 0) {
+      handleFile(fileInputEl.files[0]);
+    }
+  });
+
+  function handleFile(file: File) {
+    currentFile = file;
+    fileInfo.textContent = `${file.name} (${formatBytes(file.size)})`;
+    clearError();
+  }
+
+  async function compute() {
+    clearError();
+    const algorithms = getSelectedAlgorithms();
+    if (algorithms.length === 0) {
+      showError("Select at least one algorithm");
+      return;
+    }
+    const hmacKey = hmacKeyInput.value || undefined;
+
+    computeBtn.disabled = true;
+    computeBtn.textContent = "Computing…";
+    results.innerHTML = "";
+
+    try {
+      let hashes: Awaited<ReturnType<typeof computeHashes>>;
+
+      if (inputType.value === "file") {
+        if (!currentFile) {
+          showError("Select a file first");
+          computeBtn.disabled = false;
+          computeBtn.textContent = "Compute Hashes";
+          return;
+        }
+        hashes = await computeFileHashesIncremental(currentFile, algorithms, hmacKey);
+      } else {
+        const text = textArea.value;
+        if (!text) {
+          showError("Enter some text to hash");
+          computeBtn.disabled = false;
+          computeBtn.textContent = "Compute Hashes";
+          return;
+        }
+        hashes = await computeHashes(text, algorithms, hmacKey);
+      }
+
+      renderResults(hashes);
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Hash computation failed");
+    } finally {
+      computeBtn.disabled = false;
+      computeBtn.textContent = "Compute Hashes";
+    }
+  }
+
+  function renderResults(hashes: { algorithm: string; hash: string }[]) {
+    results.innerHTML = "";
+    for (const h of hashes) {
+      const card = document.createElement("div");
+      card.className = "output-box";
+      card.style.margin = "0";
+
+      const name = document.createElement("div");
+      name.className = "field-label";
+      name.textContent = h.algorithm;
+
+      const pre = document.createElement("div");
+      pre.textContent = h.hash;
+      pre.style.fontFamily = "var(--mono)";
+      pre.style.wordBreak = "break-all";
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.textContent = "Copy";
+      btn.style.marginTop = "0.5rem";
+      btn.addEventListener("click", () => copyTextWithFeedback(h.hash, btn));
+
+      card.append(name, pre, btn);
+      results.appendChild(card);
+    }
+  }
+
+  function clearAll() {
+    textArea.value = "";
+    currentFile = null;
+    fileInputEl.value = "";
+    fileInfo.textContent = "";
+    hmacKeyInput.value = "";
+    results.innerHTML = "";
+    clearError();
+  }
+
+  computeBtn.addEventListener("click", compute);
+  clearBtn.addEventListener("click", clearAll);
+
+  // Instant compute for text
+  let textDebounce: number;
+  textArea.addEventListener("input", () => {
+    if (inputType.value === "text") {
+      clearTimeout(textDebounce);
+      textDebounce = window.setTimeout(() => {
+        if (textArea.value.trim()) compute();
+      }, 300);
+    }
+  });
+
+  updateUI();
+</script>

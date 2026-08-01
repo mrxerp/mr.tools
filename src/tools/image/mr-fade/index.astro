@@ -1,0 +1,110 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button">
+    <input type="file" accept="image/*" data-file hidden />
+    <div class="dz-title">Drop a photo or click to browse</div>
+    <div class="dz-hint">PNG, JPEG, or WebP — analyzed locally, nothing uploads.</div>
+  </div>
+
+  <div data-report style="display:none">
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      <figure>
+        <figcaption class="field-label">Brightness histogram</figcaption>
+        <canvas data-hist width="256" height="90" style="width:100%;height:90px"></canvas>
+      </figure>
+      <div>
+        <div class="output-box" data-out></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="error-text" data-error style="display:none"></p>
+</section>
+
+<style>
+  figure {
+    margin: 0;
+  }
+</style>
+
+<script>
+  import { analyzeFade, brightnessHistogram } from "./tool.ts";
+  import { loadImageBitmap, imageDataOf } from "../_lib.ts";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const reportEl = document.querySelector<HTMLDivElement>("[data-report]")!;
+  const outEl = document.querySelector<HTMLDivElement>("[data-out]")!;
+  const histCanvas = document.querySelector<HTMLCanvasElement>("[data-hist]")!;
+  const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
+
+  let bitmap: ImageBitmap | null = null;
+  const canvas = document.createElement("canvas");
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) load(file);
+    fileInput.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) load(file);
+  });
+
+  function setError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+
+  async function load(file: File) {
+    setError("");
+    try {
+      const img = await loadImageBitmap(file);
+      bitmap = img.bitmap;
+      analyze(img.width, img.height);
+    } catch {
+      setError("Could not read that file as an image.");
+    }
+  }
+
+  function analyze(width: number, height: number) {
+    if (!bitmap) return;
+    const data = imageDataOf(canvas, bitmap).data;
+    const report = analyzeFade(data, width, height);
+    const hist = brightnessHistogram(data);
+    drawHistogram(hist);
+    outEl.textContent =
+      `${report.verdict}\n` +
+      `mean brightness ${report.mean} · true blacks ${report.blackPct}% · clipped whites ${report.clippedPct}%\n` +
+      `corner-to-center ratio ${report.vignette} (1 = even)`;
+    reportEl.style.display = "";
+  }
+
+  function drawHistogram(hist: Uint32Array) {
+    const hctx = histCanvas.getContext("2d")!;
+    const w = histCanvas.width;
+    const h = histCanvas.height;
+    hctx.clearRect(0, 0, w, h);
+    const max = Math.max(1, ...hist);
+    hctx.fillStyle = "var(--accent)";
+    for (let i = 0; i < 256; i++) {
+      const bh = Math.max(1, (hist[i] / max) * (h - 4));
+      hctx.fillRect(i, h - bh, 1, bh);
+    }
+  }
+</script>

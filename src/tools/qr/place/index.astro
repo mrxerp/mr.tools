@@ -1,0 +1,172 @@
+---
+// mr.place — instant maps-location QR, debounced while editing.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Address (or paste a coordinates pair below)</span>
+    <input class="input" type="text" data-address placeholder="1600 Amphitheatre Pkwy, Mountain View, CA" />
+  </label>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+    <label class="field">
+      <span class="field-label">Latitude</span>
+      <input class="input" type="text" data-lat placeholder="37.422" />
+    </label>
+    <label class="field">
+      <span class="field-label">Longitude</span>
+      <input class="input" type="text" data-lng placeholder="-122.084" />
+    </label>
+    <label class="field">
+      <span class="field-label">Pin label (optional)</span>
+      <input class="input" type="text" data-label placeholder="Our office" />
+    </label>
+  </div>
+  <label class="field">
+    <span class="field-label">Open in</span>
+    <select class="input" data-format>
+      <option value="geo" selected>Native maps app (geo URL)</option>
+      <option value="maps">Google Maps (web)</option>
+    </select>
+  </label>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label class="field">
+      <span class="field-label">Size: <span data-size-value>256</span>px</span>
+      <input class="input" type="range" min="96" max="1024" step="16" value="256" data-size />
+    </label>
+    <label class="field">
+      <span class="field-label">Error correction</span>
+      <select class="input" data-level>
+        <option value="M" selected>M — ~15%</option>
+        <option value="L">L — ~7% (smallest)</option>
+        <option value="Q">Q — ~25%</option>
+        <option value="H">H — ~30% (most robust)</option>
+      </select>
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn" type="button" data-copy>Copy payload</button>
+    <button class="btn btn-primary" type="button" data-download disabled>Download PNG</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { buildGeoUrl, buildMapsUrl, generatePlaceQrDataUrl, type PlaceData } from "./tool.ts";
+  import { type QrOptions } from "../qr/tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { downloadBlob } from "@/lib/download";
+
+  const addressMaybe = document.querySelector<HTMLInputElement>("[data-address]");
+  const latMaybe = document.querySelector<HTMLInputElement>("[data-lat]");
+  const lngMaybe = document.querySelector<HTMLInputElement>("[data-lng]");
+  const labelMaybe = document.querySelector<HTMLInputElement>("[data-label]");
+  const formatMaybe = document.querySelector<HTMLSelectElement>("[data-format]");
+  const sizeMaybe = document.querySelector<HTMLInputElement>("[data-size]");
+  const sizeValueMaybe = document.querySelector<HTMLSpanElement>("[data-size-value]");
+  const levelMaybe = document.querySelector<HTMLSelectElement>("[data-level]");
+  const copyBtnMaybe = document.querySelector<HTMLButtonElement>("[data-copy]");
+  const downloadBtnMaybe = document.querySelector<HTMLButtonElement>("[data-download]");
+  const outMaybe = document.querySelector<HTMLOutputElement>("[data-out]");
+  if (!addressMaybe || !latMaybe || !lngMaybe || !labelMaybe || !formatMaybe || !sizeMaybe || !sizeValueMaybe || !levelMaybe || !copyBtnMaybe || !downloadBtnMaybe || !outMaybe) {
+    throw new Error("mr.place mount failed");
+  }
+  const address = addressMaybe;
+  const lat = latMaybe;
+  const lng = lngMaybe;
+  const label = labelMaybe;
+  const format = formatMaybe;
+  const size = sizeMaybe;
+  const sizeValue = sizeValueMaybe;
+  const level = levelMaybe;
+  const copyBtn = copyBtnMaybe;
+  const downloadBtn = downloadBtnMaybe;
+  const out = outMaybe;
+
+  let timer: number | undefined;
+  let latest = 0;
+  let currentSrc: string | null = null;
+
+  function data(): PlaceData {
+    return { address: address.value, lat: lat.value, lng: lng.value, label: label.value };
+  }
+
+  function payload(): string {
+    return format.value === "geo" ? buildGeoUrl(data()) : buildMapsUrl(data());
+  }
+
+  function message(text: string, error = false) {
+    out.innerHTML = "";
+    const el = document.createElement("div");
+    if (error) el.className = "error-text";
+    el.textContent = text;
+    out.appendChild(el);
+  }
+
+  async function render() {
+    const id = ++latest;
+    sizeValue.textContent = size.value;
+    const text = payload();
+    if (!text) {
+      currentSrc = null;
+      downloadBtn.disabled = true;
+      message(format.value === "geo" ? "Enter valid latitude and longitude." : "Enter an address or valid coordinates.");
+      return;
+    }
+    try {
+      const src = await generatePlaceQrDataUrl(data(), format.value as "geo" | "maps", {
+        width: Number(size.value),
+        errorCorrectionLevel: level.value as QrOptions["errorCorrectionLevel"],
+      });
+      if (id !== latest) return;
+      currentSrc = src;
+      out.innerHTML = "";
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = `QR code for ${text}`;
+      img.style.maxWidth = "100%";
+      img.style.height = "auto";
+      img.style.imageRendering = "pixelated";
+      out.appendChild(img);
+      downloadBtn.disabled = false;
+    } catch {
+      if (id !== latest) return;
+      currentSrc = null;
+      downloadBtn.disabled = true;
+      message("That payload is too long to fit in a QR code — shorten the address or label.", true);
+    }
+  }
+
+  function schedule() {
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(render, 250);
+  }
+
+  address.addEventListener("input", schedule);
+  lat.addEventListener("input", schedule);
+  lng.addEventListener("input", schedule);
+  label.addEventListener("input", schedule);
+  format.addEventListener("change", schedule);
+  size.addEventListener("input", schedule);
+  level.addEventListener("change", schedule);
+
+  copyBtn.addEventListener("click", () => {
+    copyTextWithFeedback(payload(), copyBtn);
+  });
+
+  downloadBtn.addEventListener("click", async () => {
+    if (!currentSrc) return;
+    try {
+      const res = await fetch(currentSrc);
+      const blob = await res.blob();
+      downloadBlob(blob, "mr-place.png");
+    } catch {
+      downloadBtn.textContent = "Download failed";
+      downloadBtn.disabled = true;
+      setTimeout(() => {
+        downloadBtn.textContent = "Download PNG";
+        downloadBtn.disabled = false;
+      }, 1500);
+    }
+  });
+
+  render();
+</script>

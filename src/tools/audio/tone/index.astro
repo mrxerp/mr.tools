@@ -1,0 +1,206 @@
+---
+// mr.tone — tone/sweep/beats/noise generator via Web Audio oscillators.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+    <label class="field">
+      <span class="field-label">Mode</span>
+      <select class="input" data-mode>
+        <option value="tone">Tone</option>
+        <option value="sweep">Sweep</option>
+        <option value="beats">Beats</option>
+        <option value="noise">Noise</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">Waveform</span>
+      <select class="input" data-waveform>
+        <option value="sine">Sine</option>
+        <option value="square">Square</option>
+        <option value="triangle">Triangle</option>
+        <option value="sawtooth">Sawtooth</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">Preset</span>
+      <select class="input" data-preset>
+        <option value="">Custom…</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">Frequency (Hz) — <span class="muted" data-note></span></span>
+      <input class="input" type="number" min="20" max="20000" step="1" value="440" data-freq />
+    </label>
+    <label class="field" data-sweep-field style="display:none">
+      <span class="field-label">End frequency (Hz)</span>
+      <input class="input" type="number" min="20" max="20000" step="1" value="4000" data-end />
+    </label>
+    <label class="field" data-sweep-field style="display:none">
+      <span class="field-label">Sweep length (s)</span>
+      <input class="input" type="number" min="0.5" max="60" step="0.5" value="5" data-dur />
+    </label>
+    <label class="field" data-beats-field style="display:none">
+      <span class="field-label">Beat frequency (Hz)</span>
+      <input class="input" type="number" min="0.5" max="100" step="0.5" value="3" data-beat />
+    </label>
+    <label class="field">
+      <span class="field-label">Volume</span>
+      <input class="input" type="range" min="0" max="1" step="0.01" value="0.5" data-volume />
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-start>Start</button>
+    <button class="btn" type="button" data-stop disabled>Stop</button>
+  </div>
+  <p class="muted" style="font-size:0.85rem">
+    Test-tone warning: keep the volume low and stop if it's uncomfortable. Nothing is uploaded.
+  </p>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { TONE_PRESETS, noteForFrequency, generateTone } from "./tool.ts";
+
+  const modeEl = document.querySelector<HTMLSelectElement>("[data-mode]")!;
+  const waveformEl = document.querySelector<HTMLSelectElement>("[data-waveform]")!;
+  const presetEl = document.querySelector<HTMLSelectElement>("[data-preset]")!;
+  const freqEl = document.querySelector<HTMLInputElement>("[data-freq]")!;
+  const endEl = document.querySelector<HTMLInputElement>("[data-end]")!;
+  const durEl = document.querySelector<HTMLInputElement>("[data-dur]")!;
+  const beatEl = document.querySelector<HTMLInputElement>("[data-beat]")!;
+  const volumeEl = document.querySelector<HTMLInputElement>("[data-volume]")!;
+  const noteEl = document.querySelector<HTMLSpanElement>("[data-note]")!;
+  const startBtn = document.querySelector<HTMLButtonElement>("[data-start]")!;
+  const stopBtn = document.querySelector<HTMLButtonElement>("[data-stop]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
+
+  let ctx: AudioContext | null = null;
+  let gain: GainNode | null = null;
+  let sources: (OscillatorNode | AudioBufferSourceNode)[] = [];
+  let sweepTimer: number | null = null;
+
+  for (const p of TONE_PRESETS) {
+    const opt = document.createElement("option");
+    opt.value = String(p.freq);
+    opt.textContent = p.name;
+    presetEl.appendChild(opt);
+  }
+
+  function setOut(msg: string) {
+    out.innerHTML = "";
+    const el = document.createElement("div");
+    el.textContent = msg;
+    out.appendChild(el);
+  }
+
+  function freq(): number {
+    const v = Number(freqEl.value);
+    return v > 0 ? v : 440;
+  }
+
+  function noteReadout() {
+    const f = freq();
+    try {
+      noteEl.textContent = noteForFrequency(f);
+    } catch {
+      noteEl.textContent = "";
+    }
+  }
+
+  function showFields() {
+    const mode = modeEl.value;
+    const sweep = mode === "sweep";
+    const beats = mode === "beats";
+    document.querySelectorAll<HTMLElement>("[data-sweep-field]").forEach((el) => (el.style.display = sweep ? "" : "none"));
+    document.querySelectorAll<HTMLElement>("[data-beats-field]").forEach((el) => (el.style.display = beats ? "" : "none"));
+    waveformEl.style.display = mode === "noise" ? "none" : "";
+  }
+
+  function osc(type: OscillatorType, f: number): OscillatorNode {
+    const o = ctx!.createOscillator();
+    o.type = type;
+    o.frequency.value = f;
+    o.connect(gain!);
+    o.start();
+    sources.push(o);
+    return o;
+  }
+
+  function start() {
+    if (sources.length) stop();
+    ctx ??= new AudioContext();
+    if (ctx.state === "suspended") void ctx.resume();
+    gain = ctx.createGain();
+    gain.gain.value = Number(volumeEl.value);
+    gain.connect(ctx.destination);
+
+    const mode = modeEl.value;
+    const f = freq();
+    const wave = waveformEl.value as OscillatorType;
+    if (mode === "tone") {
+      osc(wave, f);
+      setOut(`Playing ${f} Hz (${noteForFrequency(f)}).`);
+    } else if (mode === "sweep") {
+      const end = Math.max(20, Number(endEl.value));
+      const dur = Number(durEl.value);
+      const o = osc(wave, f);
+      const t0 = ctx.currentTime;
+      o.frequency.setValueAtTime(f, t0);
+      o.frequency.exponentialRampToValueAtTime(end, t0 + dur);
+      setOut(`Sweeping ${f} → ${end} Hz over ${dur}s.`);
+      sweepTimer = window.setTimeout(stop, dur * 1000);
+    } else if (mode === "beats") {
+      osc(wave, f);
+      osc(wave, Math.max(0.5, f + Number(beatEl.value)));
+      setOut(`Playing ${f} Hz with a ${beatEl.value} Hz beat.`);
+    } else if (mode === "noise") {
+      const rate = ctx.sampleRate;
+      const buf = ctx.createBuffer(1, Math.round(rate * 2), rate);
+      buf.copyToChannel(generateTone(0, 2, rate, "noise"), 0);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      src.connect(gain);
+      src.start();
+      sources.push(src);
+      setOut("Playing white noise (2-second loop).");
+    }
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+  }
+
+  function stop() {
+    if (sweepTimer) {
+      window.clearTimeout(sweepTimer);
+      sweepTimer = null;
+    }
+    for (const s of sources) {
+      try {
+        s.stop();
+      } catch {
+        // already stopped
+      }
+    }
+    sources = [];
+    gain?.disconnect();
+    gain = null;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+  }
+
+  presetEl.addEventListener("change", () => {
+    if (presetEl.value) freqEl.value = presetEl.value;
+    noteReadout();
+  });
+  freqEl.addEventListener("input", noteReadout);
+  modeEl.addEventListener("change", () => {
+    showFields();
+    if (modeEl.value !== "tone") noteEl.textContent = "";
+  });
+  startBtn.addEventListener("click", start);
+  stopBtn.addEventListener("click", stop);
+  window.addEventListener("beforeunload", stop);
+
+  showFields();
+  noteReadout();
+</script>

@@ -1,0 +1,172 @@
+---
+// mr.wifi qr — instant Wi-Fi join QR, debounced while editing.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Network name (SSID)</span>
+    <input class="input" type="text" data-ssid placeholder="MyCoffeeShop" />
+  </label>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label class="field">
+      <span class="field-label">Security</span>
+      <select class="input" data-security>
+        <option value="WPA" selected>WPA / WPA2 / WPA3</option>
+        <option value="WEP">WEP</option>
+        <option value="nopass">Open (no password)</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">Password</span>
+      <input class="input" type="text" data-password placeholder="network password" />
+    </label>
+  </div>
+  <label class="field">
+    <span class="field-label" style="display:flex;align-items:center;gap:0.5rem">
+      <input type="checkbox" data-hidden style="accent-color:var(--accent)" />
+      Hidden network
+    </span>
+  </label>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label class="field">
+      <span class="field-label">Size: <span data-size-value>256</span>px</span>
+      <input class="input" type="range" min="96" max="1024" step="16" value="256" data-size />
+    </label>
+    <label class="field">
+      <span class="field-label">Error correction</span>
+      <select class="input" data-level>
+        <option value="M" selected>M — ~15%</option>
+        <option value="L">L — ~7% (smallest)</option>
+        <option value="Q">Q — ~25%</option>
+        <option value="H">H — ~30% (most robust)</option>
+      </select>
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn" type="button" data-copy>Copy payload</button>
+    <button class="btn btn-primary" type="button" data-download disabled>Download PNG</button>
+  </div>
+  <p class="muted" style="font-size:0.85rem;margin:0.6rem 0 0">
+    Guests scan the code to join instantly. This encodes the same payload scanners use — it won't fix a captive-portal network.
+  </p>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { buildWifiString, generateWifiQrDataUrl, type WifiConfig } from "./tool.ts";
+  import { type QrOptions } from "../qr/tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { downloadBlob } from "@/lib/download";
+
+  const ssidMaybe = document.querySelector<HTMLInputElement>("[data-ssid]");
+  const securityMaybe = document.querySelector<HTMLSelectElement>("[data-security]");
+  const passwordMaybe = document.querySelector<HTMLInputElement>("[data-password]");
+  const hiddenMaybe = document.querySelector<HTMLInputElement>("[data-hidden]");
+  const sizeMaybe = document.querySelector<HTMLInputElement>("[data-size]");
+  const sizeValueMaybe = document.querySelector<HTMLSpanElement>("[data-size-value]");
+  const levelMaybe = document.querySelector<HTMLSelectElement>("[data-level]");
+  const copyBtnMaybe = document.querySelector<HTMLButtonElement>("[data-copy]");
+  const downloadBtnMaybe = document.querySelector<HTMLButtonElement>("[data-download]");
+  const outMaybe = document.querySelector<HTMLOutputElement>("[data-out]");
+  if (!ssidMaybe || !securityMaybe || !passwordMaybe || !hiddenMaybe || !sizeMaybe || !sizeValueMaybe || !levelMaybe || !copyBtnMaybe || !downloadBtnMaybe || !outMaybe) {
+    throw new Error("mr.wifi qr mount failed");
+  }
+  const ssid = ssidMaybe;
+  const security = securityMaybe;
+  const password = passwordMaybe;
+  const hidden = hiddenMaybe;
+  const size = sizeMaybe;
+  const sizeValue = sizeValueMaybe;
+  const level = levelMaybe;
+  const copyBtn = copyBtnMaybe;
+  const downloadBtn = downloadBtnMaybe;
+  const out = outMaybe;
+
+  let timer: number | undefined;
+  let latest = 0;
+  let currentSrc: string | null = null;
+
+  function config(): WifiConfig {
+    return {
+      ssid: ssid.value,
+      password: password.value,
+      security: security.value as WifiConfig["security"],
+      hidden: hidden.checked,
+    };
+  }
+
+  function message(text: string, error = false) {
+    out.innerHTML = "";
+    const el = document.createElement("div");
+    if (error) el.className = "error-text";
+    el.textContent = text;
+    out.appendChild(el);
+  }
+
+  async function render() {
+    const id = ++latest;
+    sizeValue.textContent = size.value;
+    const text = buildWifiString(config());
+    if (!text) {
+      currentSrc = null;
+      downloadBtn.disabled = true;
+      message("Enter the network name (and password for secured networks).");
+      return;
+    }
+    try {
+      const src = await generateWifiQrDataUrl(config(), {
+        width: Number(size.value),
+        errorCorrectionLevel: level.value as QrOptions["errorCorrectionLevel"],
+      });
+      if (id !== latest) return;
+      currentSrc = src;
+      out.innerHTML = "";
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = `QR code for ${text}`;
+      img.style.maxWidth = "100%";
+      img.style.height = "auto";
+      img.style.imageRendering = "pixelated";
+      out.appendChild(img);
+      downloadBtn.disabled = false;
+    } catch {
+      if (id !== latest) return;
+      currentSrc = null;
+      downloadBtn.disabled = true;
+      message("That payload is too long to fit in a QR code — shorten the SSID or password.", true);
+    }
+  }
+
+  function schedule() {
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(render, 250);
+  }
+
+  ssid.addEventListener("input", schedule);
+  password.addEventListener("input", schedule);
+  hidden.addEventListener("change", schedule);
+  size.addEventListener("input", schedule);
+  level.addEventListener("change", schedule);
+  security.addEventListener("change", schedule);
+
+  copyBtn.addEventListener("click", () => {
+    copyTextWithFeedback(buildWifiString(config()), copyBtn);
+  });
+
+  downloadBtn.addEventListener("click", async () => {
+    if (!currentSrc) return;
+    try {
+      const res = await fetch(currentSrc);
+      const blob = await res.blob();
+      downloadBlob(blob, "mr-wifi-qr.png");
+    } catch {
+      downloadBtn.textContent = "Download failed";
+      downloadBtn.disabled = true;
+      setTimeout(() => {
+        downloadBtn.textContent = "Download PNG";
+        downloadBtn.disabled = false;
+      }, 1500);
+    }
+  });
+
+  render();
+</script>

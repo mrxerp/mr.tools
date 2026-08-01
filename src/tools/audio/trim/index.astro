@@ -1,0 +1,219 @@
+---
+// mr.trim — waveform preview, trim selection, fades, WAV export.
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button">
+    <input type="file" accept="audio/*" data-file hidden />
+    <div class="dz-title">Drop an audio file or click to browse</div>
+    <div class="dz-hint">MP3, WAV, OGG, M4A — decoded locally, nothing uploads.</div>
+  </div>
+
+  <div data-controls style="display:none">
+    <canvas data-wave width="900" height="160" style="width:100%;height:160px;display:block"></canvas>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+      <label class="field">
+        <span class="field-label">Start: <span data-start-label>0.00s</span></span>
+        <input class="input" type="range" min="0" max="1" step="0.001" value="0" data-start />
+      </label>
+      <label class="field">
+        <span class="field-label">End: <span data-end-label>0.00s</span></span>
+        <input class="input" type="range" min="0" max="1" step="0.001" value="1" data-end />
+      </label>
+      <label class="field">
+        <span class="field-label">Fade in (s)</span>
+        <input class="input" type="number" min="0" max="30" step="0.05" value="0" data-fadein />
+      </label>
+      <label class="field">
+        <span class="field-label">Fade out (s)</span>
+        <input class="input" type="number" min="0" max="30" step="0.05" value="0" data-fadeout />
+      </label>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" type="button" data-export disabled>Export WAV</button>
+      <span class="muted" data-duration></span>
+    </div>
+  </div>
+  <p class="error-text" data-error style="display:none"></p>
+</section>
+
+<style>
+  canvas[data-wave] {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-block: 0.4rem 0.8rem;
+  }
+</style>
+
+<script>
+  import { clampRange, samplePeaks, formatDuration } from "./tool.ts";
+  import { encodeWav } from "../_wav.ts";
+  import { readFileAsArrayBuffer, swapExtension } from "@/lib/files";
+  import { downloadBlob } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const controls = document.querySelector<HTMLDivElement>("[data-controls]")!;
+  const canvas = document.querySelector<HTMLCanvasElement>("[data-wave]")!;
+  const startEl = document.querySelector<HTMLInputElement>("[data-start]")!;
+  const endEl = document.querySelector<HTMLInputElement>("[data-end]")!;
+  const startLabel = document.querySelector<HTMLSpanElement>("[data-start-label]")!;
+  const endLabel = document.querySelector<HTMLSpanElement>("[data-end-label]")!;
+  const fadeInEl = document.querySelector<HTMLInputElement>("[data-fadein]")!;
+  const fadeOutEl = document.querySelector<HTMLInputElement>("[data-fadeout]")!;
+  const exportBtn = document.querySelector<HTMLButtonElement>("[data-export]")!;
+  const durationEl = document.querySelector<HTMLSpanElement>("[data-duration]")!;
+  const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
+
+  let buffer: AudioBuffer | null = null;
+  let peaks: Uint8Array = new Uint8Array(0);
+  let fileName = "";
+  let working = false;
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) void load(file);
+    fileInput.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) void load(file);
+  });
+
+  function setError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+
+  function selection() {
+    if (!buffer) return { start: 0, end: 0 };
+    return clampRange(buffer.duration, Number(startEl.value) * buffer.duration, Number(endEl.value) * buffer.duration);
+  }
+
+  function drawWaveform() {
+    const ctx2d = canvas.getContext("2d")!;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx2d.clearRect(0, 0, w, h);
+    if (!buffer) return;
+    const { start, end } = selection();
+    const selW = ((end - start) / buffer.duration) * w;
+    const selX = (start / buffer.duration) * w;
+    ctx2d.fillStyle = "var(--accent-soft)";
+    ctx2d.fillRect(selX, 0, selW, h);
+    const mid = h / 2;
+    ctx2d.fillStyle = "var(--accent)";
+    for (let b = 0; b < peaks.length; b++) {
+      const x = (b / peaks.length) * w;
+      const barW = Math.max(1, w / peaks.length - 1);
+      const amp = (peaks[b] / 255) * (h / 2 - 4);
+      ctx2d.fillRect(x, mid - amp, barW, amp * 2);
+    }
+  }
+
+  function refresh() {
+    if (!buffer) return;
+    const { start, end } = selection();
+    startLabel.textContent = formatDuration(start);
+    endLabel.textContent = formatDuration(end);
+    durationEl.textContent = `Trimmed length: ${formatDuration(end - start)} of ${formatDuration(buffer.duration)}`;
+    drawWaveform();
+  }
+
+  async function load(file: File) {
+    setError("");
+    if (working) return;
+    working = true;
+    try {
+      const ctx = new AudioContext();
+      const data = await readFileAsArrayBuffer(file);
+      buffer = await ctx.decodeAudioData(data);
+      await ctx.close();
+      fileName = file.name;
+      const mono = buffer.numberOfChannels > 1
+        ? averageChannels(buffer)
+        : buffer.getChannelData(0);
+      peaks = samplePeaks(mono, 512);
+      startEl.value = "0";
+      endEl.value = "1";
+      controls.style.display = "";
+      exportBtn.disabled = false;
+      refresh();
+    } catch {
+      setError("Could not decode that file as audio. Try a WAV, MP3, OGG, or M4A.");
+      buffer = null;
+      controls.style.display = "none";
+    } finally {
+      working = false;
+    }
+  }
+
+  function averageChannels(buf: AudioBuffer): Float32Array {
+    const len = buf.length;
+    const out = new Float32Array(len);
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const data = buf.getChannelData(c);
+      for (let i = 0; i < len; i++) out[i] += data[i] / buf.numberOfChannels;
+    }
+    return out;
+  }
+
+  async function exportWav() {
+    if (!buffer || exportBtn.disabled) return;
+    exportBtn.disabled = true;
+    try {
+      const { start, end } = selection();
+      const dur = end - start;
+      const off = new OfflineAudioContext(buffer.numberOfChannels, Math.round(dur * buffer.sampleRate), buffer.sampleRate);
+      const src = off.createBufferSource();
+      src.buffer = buffer;
+      const gain = off.createGain();
+      const t0 = off.currentTime;
+      const fi = Math.min(Number(fadeInEl.value) || 0, dur / 2);
+      const fo = Math.min(Number(fadeOutEl.value) || 0, dur / 2);
+      gain.gain.setValueAtTime(0, t0);
+      gain.gain.linearRampToValueAtTime(1, t0 + fi);
+      gain.gain.setValueAtTime(1, t0 + dur - fo);
+      gain.gain.linearRampToValueAtTime(0, t0 + dur);
+      src.connect(gain).connect(off.destination);
+      src.start(t0, start, dur);
+      const rendered = await off.startRendering();
+      const ch = rendered.numberOfChannels;
+      const interleaved = new Float32Array(rendered.length * ch);
+      for (let c = 0; c < ch; c++) {
+        const data = rendered.getChannelData(c);
+        for (let i = 0; i < rendered.length; i++) interleaved[i * ch + c] = data[i];
+      }
+      downloadBlob(
+        new Blob([encodeWav(interleaved, rendered.sampleRate, ch)], { type: "audio/wav" }),
+        swapExtension(fileName, "wav"),
+      );
+      exportBtn.textContent = "Exported ✓";
+      window.setTimeout(() => (exportBtn.textContent = "Export WAV"), 1500);
+    } catch {
+      setError("Rendering failed for that clip — try a shorter selection.");
+    } finally {
+      exportBtn.disabled = false;
+    }
+  }
+
+  startEl.addEventListener("input", refresh);
+  endEl.addEventListener("input", refresh);
+  fadeInEl.addEventListener("input", refresh);
+  fadeOutEl.addEventListener("input", refresh);
+  exportBtn.addEventListener("click", exportWav);
+</script>

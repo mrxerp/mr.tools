@@ -1,0 +1,145 @@
+---
+// mr.table — visual markdown table builder. Instant live preview.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:1rem">
+    <label class="field">
+      <span class="field-label">Markdown Table (pipe format)</span>
+      <textarea class="input" rows="10" placeholder="Paste a markdown table or start fresh…" data-md></textarea>
+    </label>
+    <label class="field">
+      <span class="field-label">Live Preview / Editor</span>
+      <div class="output-box" style="min-height:200px;overflow:auto" data-preview></div>
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" data-load-csv>Load CSV</button>
+    <button class="btn" data-export-csv>Export CSV</button>
+    <button class="btn" data-add-row>Add Row</button>
+    <button class="btn" data-add-col>Add Column</button>
+    <button class="btn" data-copy>Copy Markdown</button>
+  </div>
+  <div class="output-box" data-output aria-live="polite"></div>
+</section>
+
+<script>
+  import {
+    parseMarkdownTable,
+    generateMarkdownTable,
+    parseCSV,
+    tableToCSV,
+    type TableData,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { downloadText } from "@/lib/download";
+
+  const mdInput = document.querySelector<HTMLTextAreaElement>("[data-md]")!;
+  const preview = document.querySelector<HTMLDivElement>("[data-preview]")!;
+  const output = document.querySelector<HTMLDivElement>("[data-output]")!;
+
+  let tableData: TableData = { headers: ["Column 1", "Column 2"], alignments: ["left", "left"], rows: [[{ value: "", align: "left" }, { value: "", align: "left" }]] };
+
+  function renderPreview() {
+    const md = generateMarkdownTable(tableData);
+    output.textContent = md;
+    preview.innerHTML = "";
+    const table = document.createElement("table");
+    table.style.width = "100%";
+    table.style.borderCollapse = "collapse";
+    table.style.fontFamily = "var(--mono)";
+    table.style.fontSize = "0.85rem";
+
+    const thead = document.createElement("thead");
+    const hRow = document.createElement("tr");
+    tableData.headers.forEach((h, i) => {
+      const th = document.createElement("th");
+      th.textContent = h;
+      th.contentEditable = "true";
+      th.style.border = "1px solid var(--border)";
+      th.style.padding = "0.4rem 0.6rem";
+      th.style.textAlign = tableData.alignments[i];
+      th.style.background = "var(--accent-soft)";
+      th.style.color = "var(--accent)";
+      th.style.fontWeight = "600";
+      th.dataset.col = String(i);
+      th.addEventListener("blur", () => {
+        tableData.headers[i] = th.textContent || "";
+        renderPreview();
+      });
+      hRow.appendChild(th);
+    });
+    thead.appendChild(hRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    tableData.rows.forEach((row, rIdx) => {
+      const tr = document.createElement("tr");
+      row.forEach((cell, cIdx) => {
+        const td = document.createElement("td");
+        td.textContent = cell.value;
+        td.contentEditable = "true";
+        td.style.border = "1px solid var(--border)";
+        td.style.padding = "0.4rem 0.6rem";
+        td.style.textAlign = cell.align || "left";
+        td.dataset.row = String(rIdx);
+        td.dataset.col = String(cIdx);
+        td.addEventListener("blur", () => {
+          tableData.rows[rIdx][cIdx].value = td.textContent || "";
+          renderPreview();
+        });
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    preview.appendChild(table);
+  }
+
+  function parseAndLoad() {
+    const parsed = parseMarkdownTable(mdInput.value);
+    if (parsed) tableData = parsed;
+    renderPreview();
+  }
+
+  mdInput.addEventListener("input", parseAndLoad);
+
+  document.querySelector("[data-load-csv]")!.addEventListener("click", () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".csv,text/csv";
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        file.text().then((text) => {
+          tableData = parseCSV(text);
+          mdInput.value = generateMarkdownTable(tableData);
+          renderPreview();
+        });
+      }
+    };
+    input.click();
+  });
+
+  document.querySelector("[data-export-csv]")!.addEventListener("click", () => {
+    downloadText(tableToCSV(tableData), "table.csv", "text/csv");
+  });
+
+  document.querySelector("[data-add-row]")!.addEventListener("click", () => {
+    tableData.rows.push(tableData.headers.map(() => ({ value: "", align: "left" })));
+    renderPreview();
+  });
+
+  document.querySelector("[data-add-col]")!.addEventListener("click", () => {
+    const newCol = `Column ${tableData.headers.length + 1}`;
+    tableData.headers.push(newCol);
+    tableData.alignments.push("left");
+    for (const row of tableData.rows) row.push({ value: "", align: "left" });
+    renderPreview();
+  });
+
+  document.querySelector("[data-copy]")!.addEventListener("click", () => {
+    copyTextWithFeedback(output.textContent, document.querySelector("[data-copy]") as HTMLButtonElement);
+  });
+
+  renderPreview();
+</script>

@@ -38,3 +38,12 @@ export function canvasToBlob(
     );
   });
 }
+
+/** Draws a bitmap onto the canvas at its native size and returns its pixels. */
+export function imageDataOf(
+  canvas: HTMLCanvasElement,
+  bitmap: ImageBitmap,
+): ImageData {
+  drawScaled(canvas, bitmap, bitmap.width, bitmap.height);
+  return canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height);
+}

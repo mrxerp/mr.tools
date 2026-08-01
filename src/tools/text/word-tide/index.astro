@@ -1,0 +1,76 @@
+---
+// mr.word tide — live writing stats: counts, reading/speaking time, readability.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Text</span>
+    <textarea class="input" rows="8" placeholder="Start typing or paste your writing…" data-input></textarea>
+  </label>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))" data-stats></div>
+  <div class="actions">
+    <button class="btn" type="button" data-copy>Copy report card</button>
+  </div>
+</section>
+
+<script>
+  import { analyze, type TextStats } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const stats = document.querySelector<HTMLDivElement>("[data-stats]")!;
+  const copy = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  if (!input || !stats || !copy) throw new Error("mr word tide mount failed");
+
+  function card(label: string, value: string): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "output-box";
+    el.style.margin = "0";
+    const l = document.createElement("div");
+    l.className = "field-label";
+    l.textContent = label;
+    const v = document.createElement("div");
+    v.style.fontSize = "1.2rem";
+    v.style.fontWeight = "700";
+    v.textContent = value;
+    el.append(l, v);
+    return el;
+  }
+
+  function fmt(min: number, sec: number): string {
+    return min > 0 ? `${min}m ${sec}s` : `${sec}s`;
+  }
+
+  function reportCard(s: TextStats): string {
+    const f = s.flesch === null ? "—" : `${s.flesch} (${s.fleschLabel})`;
+    return [
+      `Words: ${s.words}`,
+      `Characters: ${s.chars}`,
+      `Sentences: ${s.sentences}`,
+      `Reading time: ${fmt(s.readingMinutes, s.readingSeconds)}`,
+      `Speaking time: ${fmt(s.speakingMinutes, s.speakingSeconds)}`,
+      `Flesch reading ease: ${f}`,
+      `Gunning Fog: ${s.fog ?? "—"}`,
+    ].join("\n");
+  }
+
+  function render() {
+    const s = analyze(input.value);
+    stats.innerHTML = "";
+    const items: [string, string][] = [
+      ["Words", String(s.words)],
+      ["Characters", String(s.chars)],
+      ["Sentences", String(s.sentences)],
+      ["Avg word length", String(s.avgWordLength)],
+      ["Reading time", fmt(s.readingMinutes, s.readingSeconds)],
+      ["Speaking time", fmt(s.speakingMinutes, s.speakingSeconds)],
+      ["Flesch", s.flesch === null ? "—" : String(s.flesch)],
+      ["Readability", s.fleschLabel],
+      ["Gunning Fog", s.fog === null ? "—" : String(s.fog)],
+    ];
+    for (const [label, value] of items) stats.appendChild(card(label, value));
+  }
+
+  copy.addEventListener("click", () => copyTextWithFeedback(reportCard(analyze(input.value)), copy));
+  input.addEventListener("input", render);
+  render();
+</script>

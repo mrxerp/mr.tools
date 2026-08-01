@@ -1,0 +1,186 @@
+---
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Input Method</span>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="radio" name="input-method" value="image" checked data-input-method> Upload Image</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="radio" name="input-method" value="hex" data-input-method> Paste Hex List</label>
+    </div>
+  </div>
+
+  <div class="field" data-image-input>
+    <span class="field-label">Upload Image</span>
+    <div class="drop-zone" data-drop-zone>
+      <div class="dz-title">Drag & drop an image or click to browse</div>
+      <div class="dz-hint">PNG, JPG, WebP, SVG</div>
+      <input type="file" accept="image/*" hidden data-file-input />
+    </div>
+  </div>
+
+  <div class="field" data-hex-input style="display:none">
+    <span class="field-label">Hex Colors (space or comma separated)</span>
+    <textarea class="input" rows="4" placeholder="#ff0000 #00ff00 #0000ff #ffff00 #ff00ff" data-hex-list></textarea>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Options</span>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="checkbox" checked data-include-shades> Generate shades (50-950)</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="checkbox" data-sort-hue> Sort by hue</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="checkbox" data-sort-lightness> Sort by lightness</label>
+      <input class="input" type="text" value="color" placeholder="prefix" data-prefix style="max-width:150px" />
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-extract>Extract Colors</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div class="section-title">Extracted Colors</div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:0.5rem" data-colors></div>
+
+  <div class="section-title">Exports</div>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
+    <button class="btn" data-export-css>CSS Variables</button>
+    <button class="btn" data-export-scss>SCSS Map</button>
+    <button class="btn" data-export-tailwind>Tailwind Config</button>
+    <button class="btn" data-export-html>HTML Sample</button>
+    <button class="btn" data-export-react>React Sample</button>
+    <button class="btn" data-export-vue>Vue Sample</button>
+  </div>
+  <output class="output-box" data-output aria-live="polite"></output>
+</section>
+
+<script>
+  import {
+    extractFromImage,
+    extractFromHexList,
+    generateExports,
+    generateSampleComponent,
+    sortColorsByHue,
+    sortColorsByLightness,
+    type ExtractedColor,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+import { downloadText } from "@/lib/download";
+
+  const imageInputSection = document.querySelector<HTMLDivElement>("[data-image-input]")!;
+  const hexInputSection = document.querySelector<HTMLDivElement>("[data-hex-input]")!;
+  const dropZone = document.querySelector<HTMLDivElement>("[data-drop-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file-input]")!;
+  const hexList = document.querySelector<HTMLTextAreaElement>("[data-hex-list]")!;
+  const includeShades = document.querySelector<HTMLInputElement>("[data-include-shades]")!;
+  const sortHue = document.querySelector<HTMLInputElement>("[data-sort-hue]")!;
+  const sortLightness = document.querySelector<HTMLInputElement>("[data-sort-lightness]")!;
+  const prefixInput = document.querySelector<HTMLInputElement>("[data-prefix]")!;
+  const colorsGrid = document.querySelector<HTMLDivElement>("[data-colors]")!;
+  const output = document.querySelector<HTMLOutputElement>("[data-output]")!;
+
+  let extractedColors: ExtractedColor[] = [];
+  let currentImage: HTMLImageElement | null = null;
+
+  function switchInputMethod(method: "image" | "hex") {
+    imageInputSection.style.display = method === "image" ? "block" : "none";
+    hexInputSection.style.display = method === "hex" ? "block" : "none";
+  }
+
+  document.querySelectorAll<HTMLInputElement>("[data-input-method]").forEach(input => {
+    input.addEventListener("change", () => switchInputMethod(input.value as "image" | "hex"));
+  });
+
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag"));
+  dropZone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropZone.classList.remove("drag");
+    const file = e.dataTransfer?.files[0];
+    if (file && file.type.startsWith("image/")) handleImageFile(file);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files?.[0]) handleImageFile(fileInput.files[0]);
+  });
+
+  async function handleImageFile(file: File) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      currentImage = img;
+      extractColors();
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+
+  function extractColors() {
+    if (document.querySelector<HTMLInputElement>("[data-input-method]:checked")?.value === "image") {
+      if (!currentImage) return;
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      const maxDim = 400;
+      const scale = Math.min(maxDim / currentImage.width, maxDim / currentImage.height, 1);
+      canvas.width = currentImage.width * scale;
+      canvas.height = currentImage.height * scale;
+      ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      extractedColors = extractFromImage(imageData, 20);
+    } else {
+      extractedColors = extractFromHexList(hexList.value);
+    }
+
+    if (sortHue.checked) extractedColors = sortColorsByHue(extractedColors);
+    if (sortLightness.checked) extractedColors = sortColorsByLightness(extractedColors);
+
+    renderColors();
+    output.textContent = "";
+  }
+
+  function renderColors() {
+    colorsGrid.innerHTML = "";
+    extractedColors.forEach(color => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.style.padding = "0.5rem";
+      card.style.textAlign = "center";
+      card.style.cursor = "pointer";
+      card.innerHTML = `
+        <div style="width:100%;height:40px;border-radius:8px;background:${color.hex};border:1px solid var(--border);margin-bottom:0.5rem"></div>
+        <div class="mono" style="font-size:0.7rem;word-break:break-all">${color.hex}</div>
+        <div style="font-size:0.65rem;color:var(--muted)">${color.name}</div>
+      `;
+      card.addEventListener("click", () => copyTextWithFeedback(color.hex, card.querySelector(".mono")!));
+      colorsGrid.appendChild(card);
+    });
+  }
+
+  function exportFormat(type: "css" | "scss" | "tailwind" | "html" | "react" | "vue") {
+    if (extractedColors.length === 0) return;
+    const exports = generateExports(extractedColors, prefixInput.value, includeShades.checked);
+    let result = "";
+    if (type === "css") result = exports.cssVariables;
+    else if (type === "scss") result = exports.scssMap;
+    else if (type === "tailwind") result = exports.tailwindConfig;
+    else if (type === "html") result = generateSampleComponent(extractedColors, "html");
+    else if (type === "react") result = generateSampleComponent(extractedColors, "react");
+    else if (type === "vue") result = generateSampleComponent(extractedColors, "vue");
+    output.textContent = result;
+    copyTextWithFeedback(result, output);
+  }
+
+  document.querySelector("[data-extract]")!.addEventListener("click", extractColors);
+  document.querySelector("[data-clear]")!.addEventListener("click", () => {
+    extractedColors = [];
+    colorsGrid.innerHTML = "";
+    output.textContent = "";
+    hexList.value = "";
+    fileInput.value = "";
+  });
+  document.querySelector("[data-export-css]")!.addEventListener("click", () => exportFormat("css"));
+  document.querySelector("[data-export-scss]")!.addEventListener("click", () => exportFormat("scss"));
+  document.querySelector("[data-export-tailwind]")!.addEventListener("click", () => exportFormat("tailwind"));
+  document.querySelector("[data-export-html]")!.addEventListener("click", () => exportFormat("html"));
+  document.querySelector("[data-export-react]")!.addEventListener("click", () => exportFormat("react"));
+  document.querySelector("[data-export-vue]")!.addEventListener("click", () => exportFormat("vue"));
+</script>

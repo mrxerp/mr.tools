@@ -1,0 +1,115 @@
+---
+// mr.ean — batch EAN-13 barcode generator. Run button processes pasted numbers.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Product numbers (one per line — 12 digits gets a check digit added, 13 is validated)</span>
+    <textarea class="input" data-list placeholder="400638133393&#10;590123412345"></textarea>
+  </label>
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-run>Generate barcodes</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { completeEan13, ean13Modules, normalizeEan13, validateEan13 } from "./tool.ts";
+  import { downloadBlob } from "@/lib/download";
+
+  const listMaybe = document.querySelector<HTMLTextAreaElement>("[data-list]");
+  const runBtnMaybe = document.querySelector<HTMLButtonElement>("[data-run]");
+  const outMaybe = document.querySelector<HTMLOutputElement>("[data-out]");
+  if (!listMaybe || !runBtnMaybe || !outMaybe) throw new Error("mr.ean mount failed");
+  const list = listMaybe;
+  const runBtn = runBtnMaybe;
+  const out = outMaybe;
+
+  function message(text: string, error = false) {
+    out.innerHTML = "";
+    const el = document.createElement("div");
+    if (error) el.className = "error-text";
+    el.textContent = text;
+    out.appendChild(el);
+  }
+
+  function drawBarcode(canvas: HTMLCanvasElement, code: string) {
+    const modules = ean13Modules(code);
+    const scale = 4;
+    const moduleHeight = 140;
+    const numberBand = 30;
+    canvas.width = modules.length * scale;
+    canvas.height = moduleHeight + numberBand;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#000";
+    for (let i = 0; i < modules.length; i++) {
+      if (modules[i] === 0) continue;
+      const guard = i === 0 || i === 2 || i === 46 || i === 48 || i === 92 || i === 94;
+      const h = guard ? canvas.height : moduleHeight;
+      ctx.fillRect(i * scale, 0, scale, h);
+    }
+    ctx.fillStyle = "#000";
+    ctx.font = "18px " + getComputedStyle(document.body).getPropertyValue("--mono");
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(code, canvas.width / 2, canvas.height - 6);
+  }
+
+  function makeItem(raw: string): { ok: boolean; code?: string; note: string } {
+    const d = normalizeEan13(raw);
+    if (d.length === 12) {
+      return { ok: true, code: completeEan13(d), note: "Check digit added" };
+    }
+    if (d.length === 13) {
+      return validateEan13(d) ? { ok: true, code: d, note: "Valid" } : { ok: false, note: "Bad check digit" };
+    }
+    return { ok: false, note: "Needs 12 or 13 digits" };
+  }
+
+  runBtn.addEventListener("click", () => {
+    const lines = list.value.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+    if (lines.length === 0) {
+      message("Paste at least one product number first.", true);
+      return;
+    }
+    out.innerHTML = "";
+    let okCount = 0;
+    for (const raw of lines) {
+      const item = makeItem(raw);
+      if (!item.ok) {
+        const err = document.createElement("div");
+        err.className = "error-text";
+        err.textContent = `${raw} — ${item.note}`;
+        out.appendChild(err);
+        continue;
+      }
+      okCount++;
+      const code = item.code as string;
+      const wrap = document.createElement("div");
+      wrap.style.marginBlock = "0 1rem";
+      const head = document.createElement("div");
+      head.textContent = `${raw} → ${code} (${item.note})`;
+      wrap.appendChild(head);
+      const canvas = document.createElement("canvas");
+      drawBarcode(canvas, code);
+      wrap.appendChild(canvas);
+      const btn = document.createElement("button");
+      btn.className = "btn";
+      btn.type = "button";
+      btn.textContent = "Download PNG";
+      btn.style.marginTop = "0.4rem";
+      btn.addEventListener("click", () => {
+        canvas.toBlob((blob) => {
+          if (blob) downloadBlob(blob, `${code}.png`);
+        }, "image/png");
+      });
+      wrap.appendChild(btn);
+      out.appendChild(wrap);
+    }
+    if (okCount === 0) {
+      message("No valid EAN-13 numbers could be generated.", true);
+    }
+  });
+</script>

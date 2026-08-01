@@ -1,0 +1,93 @@
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose a PDF to cut">
+    <input type="file" accept="application/pdf" data-input hidden />
+    <span class="dz-title">Drop a PDF here or click to browse</span>
+    <span class="dz-hint">One PDF — every page is cut in half, so page 1 becomes pages 1 and 2.</span>
+  </div>
+
+  <label class="field">
+    <span class="field-label">Cut direction</span>
+    <select class="input" data-axis>
+      <option value="vertical">Vertical — left / right halves</option>
+      <option value="horizontal">Horizontal — top / bottom halves</option>
+    </select>
+  </label>
+
+  <div class="actions">
+    <button type="button" class="btn btn-primary" data-run disabled>Cut pages</button>
+    <button type="button" class="btn" data-download hidden>Download cut PDF</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { perforate } from "./tool.ts";
+  import { readFileAsArrayBuffer, formatBytes, swapExtension } from "@/lib/files";
+  import { downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const axis = document.querySelector<HTMLSelectElement>("[data-axis]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const download = document.querySelector<HTMLButtonElement>("[data-download]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  if (!zone || !input || !axis || !run || !download || !out) throw new Error("mr perforate mount failed");
+
+  let file: File | null = null;
+
+  const accept = (incoming: FileList | File[]) => {
+    file = Array.from(incoming).find(
+      (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
+    ) ?? null;
+    run.disabled = !file;
+    out.textContent = file ? `Loaded ${file.name} (${formatBytes(file.size)}).` : "";
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      input.click();
+    }
+  });
+  input.addEventListener("change", () => {
+    if (input.files) accept(input.files);
+    input.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer) accept(e.dataTransfer.files);
+  });
+
+  let cut: Uint8Array | null = null;
+  run.addEventListener("click", async () => {
+    if (!file) return;
+    run.disabled = true;
+    out.textContent = "Cutting…";
+    try {
+      const bytes = await readFileAsArrayBuffer(file);
+      cut = await perforate(bytes, axis.value === "vertical" ? "vertical" : "horizontal");
+      out.textContent = `Cut every page in half — ${formatBytes(cut.byteLength)}. Each source page is now two pages.`;
+      download.hidden = false;
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Cut failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = !file;
+    }
+  });
+
+  download.addEventListener("click", () => {
+    if (cut && file) downloadArrayBuffer(cut, swapExtension(file.name, "pdf"), "application/pdf");
+  });
+</script>

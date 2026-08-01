@@ -1,0 +1,84 @@
+---
+// mr.palindrome — palindromes and anagrams in any pasted text.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Corpus</span>
+    <textarea class="input" rows="8" placeholder="Paste any text…" data-corpus></textarea>
+  </label>
+  <label class="field">
+    <span class="field-label">Find anagrams of</span>
+    <input class="input" type="text" placeholder="e.g. listen" data-word />
+  </label>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:1rem">
+    <div class="output-box" data-palins aria-live="polite"></div>
+    <div class="output-box" data-anag aria-live="polite"></div>
+  </div>
+</section>
+
+<style>
+  .hit {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 999px;
+    padding: 0.15rem 0.6rem;
+    margin: 0.15rem 0.3rem 0.15rem 0;
+    font-size: 0.85rem;
+  }
+  .panel-label {
+    display: block;
+    margin-bottom: 0.4rem;
+  }
+</style>
+
+<script>
+  import { anagramsOf, findPalindromes, isPalindrome } from "./tool.ts";
+
+  const corpus = document.querySelector<HTMLTextAreaElement>("[data-corpus]")!;
+  const word = document.querySelector<HTMLInputElement>("[data-word]")!;
+  const palins = document.querySelector<HTMLDivElement>("[data-palins]")!;
+  const anag = document.querySelector<HTMLDivElement>("[data-anag]")!;
+  if (!corpus || !word || !palins || !anag) throw new Error("mr palindrome mount failed");
+
+  function renderList(el: HTMLDivElement, label: string, items: string[]) {
+    el.innerHTML = "";
+    const l = document.createElement("span");
+    l.className = "panel-label field-label";
+    l.textContent = label;
+    el.appendChild(l);
+    if (items.length === 0) {
+      const none = document.createElement("div");
+      none.className = "muted";
+      none.textContent = "—";
+      el.appendChild(none);
+      return;
+    }
+    for (const item of items) {
+      const h = document.createElement("span");
+      h.className = "hit";
+      h.textContent = item;
+      el.appendChild(h);
+    }
+  }
+
+  function render() {
+    const text = corpus.value;
+    renderList(palins, "Palindromes", findPalindromes(text));
+    const target = word.value.trim();
+    if (!target) {
+      renderList(anag, "Anagrams", []);
+      return;
+    }
+    const list = anagramsOf(target, text);
+    if (list.length === 0) {
+      renderList(anag, `Anagrams of "${target}" (none in corpus)`, []);
+    } else {
+      renderList(anag, `Anagrams of "${target}"${isPalindrome(target) ? " — it's also a palindrome!" : ""}`, list);
+    }
+  }
+
+  corpus.addEventListener("input", render);
+  word.addEventListener("input", render);
+  render();
+</script>

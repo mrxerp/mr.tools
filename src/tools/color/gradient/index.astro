@@ -1,0 +1,300 @@
+---
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Gradient Type</span>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="radio" name="type" value="linear" checked data-type> Linear</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="radio" name="type" value="radial" data-type> Radial</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="radio" name="type" value="conic" data-type> Conic</label>
+    </div>
+  </div>
+
+  <div class="field" data-linear-fields>
+    <span class="field-label">Angle</span>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <input type="range" min="0" max="360" value="90" data-angle style="flex:1" />
+      <input class="input" type="number" value="90" data-angle-input min="0" max="360" style="width:80px" />
+    </div>
+  </div>
+
+  <div class="field" data-radial-fields style="display:none">
+    <span class="field-label">Shape</span>
+    <select class="input" data-shape style="max-width:150px">
+      <option value="ellipse">Ellipse</option>
+      <option value="circle">Circle</option>
+    </select>
+    <span class="field-label" style="margin-top:0.5rem">Size</span>
+    <select class="input" data-size style="max-width:200px">
+      <option value="farthest-corner">Farthest Corner</option>
+      <option value="closest-side">Closest Side</option>
+      <option value="farthest-side">Farthest Side</option>
+      <option value="closest-corner">Closest Corner</option>
+      <option value="cover">Cover</option>
+      <option value="contain">Contain</option>
+    </select>
+  </div>
+
+  <div class="field" data-conic-fields style="display:none">
+    <span class="field-label">Rotation</span>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <input type="range" min="0" max="360" value="0" data-conic-angle style="flex:1" />
+      <input class="input" type="number" value="0" data-conic-angle-input min="0" max="360" style="width:80px" />
+    </div>
+  </div>
+
+  <div class="section-title">Color Stops</div>
+  <div data-stops></div>
+  <div class="actions">
+    <button class="btn" data-add-stop>+ Add Stop</button>
+    <button class="btn" data-random-stops>Random Stops</button>
+  </div>
+
+  <div class="section-title">Live Preview</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1rem" data-preview-grid></div>
+
+  <div class="section-title">Presets</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.5rem;margin-bottom:1rem" data-presets></div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-copy-css>Copy CSS</button>
+    <button class="btn" data-download-png>Download PNG</button>
+  </div>
+  <output class="output-box" data-output aria-live="polite"></output>
+</section>
+
+<script>
+  import {
+    generateGradientCSS,
+    gradientToCanvas,
+    addStop,
+    removeStop,
+    updateStop,
+    createDefaultGradient,
+    PRESETS,
+    type GradientConfig,
+    type GradientStop,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { downloadBlob } from "@/lib/download";
+
+  const typeInputs = document.querySelectorAll<HTMLInputElement>("[data-type]");
+  const angleSlider = document.querySelector<HTMLInputElement>("[data-angle]")!;
+  const angleInput = document.querySelector<HTMLInputElement>("[data-angle-input]")!;
+  const conicAngleSlider = document.querySelector<HTMLInputElement>("[data-conic-angle]")!;
+  const conicAngleInput = document.querySelector<HTMLInputElement>("[data-conic-angle-input]")!;
+  const shapeSelect = document.querySelector<HTMLSelectElement>("[data-shape]")!;
+  const sizeSelect = document.querySelector<HTMLSelectElement>("[data-size]")!;
+  const stopsContainer = document.querySelector<HTMLDivElement>("[data-stops]")!;
+  const previewGrid = document.querySelector<HTMLDivElement>("[data-preview-grid]")!;
+  const presetsContainer = document.querySelector<HTMLDivElement>("[data-presets]")!;
+  const output = document.querySelector<HTMLOutputElement>("[data-output]")!;
+  const linearFields = document.querySelector<HTMLDivElement>("[data-linear-fields]")!;
+  const radialFields = document.querySelector<HTMLDivElement>("[data-radial-fields]")!;
+  const conicFields = document.querySelector<HTMLDivElement>("[data-conic-fields]")!;
+
+  let config: GradientConfig = createDefaultGradient("linear");
+  let stopCounter = 0;
+
+  function updateUI() {
+    typeInputs.forEach(input => {
+      input.checked = input.value === config.type;
+    });
+    if (config.type === "linear") {
+      linearFields.style.display = "block";
+      radialFields.style.display = "none";
+      conicFields.style.display = "none";
+      angleSlider.value = String(config.angle);
+      angleInput.value = String(config.angle);
+    } else if (config.type === "radial") {
+      linearFields.style.display = "none";
+      radialFields.style.display = "block";
+      conicFields.style.display = "none";
+      shapeSelect.value = config.shape || "ellipse";
+      sizeSelect.value = config.size || "farthest-corner";
+    } else {
+      linearFields.style.display = "none";
+      radialFields.style.display = "none";
+      conicFields.style.display = "block";
+      conicAngleSlider.value = String(config.angle);
+      conicAngleInput.value = String(config.angle);
+    }
+    renderStops();
+    renderPreview();
+  }
+
+  function renderStops() {
+    stopsContainer.innerHTML = "";
+    config.stops.forEach((stop, i) => {
+      const div = document.createElement("div");
+      div.style.display = "flex";
+      div.style.gap = "0.5rem";
+      div.style.alignItems = "center";
+      div.style.marginBottom = "0.5rem";
+      div.innerHTML = `
+        <input class="input" type="color" value="${stop.color}" data-stop-color style="width:40px;height:32px;border-radius:6px" />
+        <input class="input" type="text" value="${stop.color}" data-stop-hex placeholder="#hex" style="flex:1;min-width:100px" />
+        <input type="range" min="0" max="100" value="${Math.round(stop.position * 100)}" data-stop-pos style="flex:1" />
+        <span class="mono" style="width:45px;text-align:right">${Math.round(stop.position * 100)}%</span>
+        <button class="btn" data-stop-remove style="padding:0.35rem 0.6rem;font-size:0.8rem">Remove</button>
+      `;
+      stopsContainer.appendChild(div);
+
+      const colorInput = div.querySelector<HTMLInputElement>("[data-stop-color]")!;
+      const hexInput = div.querySelector<HTMLInputElement>("[data-stop-hex]")!;
+      const posInput = div.querySelector<HTMLInputElement>("[data-stop-pos]")!;
+      const removeBtn = div.querySelector<HTMLButtonElement>("[data-stop-remove]")!;
+
+      colorInput.addEventListener("input", () => {
+        hexInput.value = colorInput.value;
+        updateStopColor(i, colorInput.value);
+      });
+      hexInput.addEventListener("input", () => {
+        if (/^#[0-9a-fA-F]{3,6}$/.test(hexInput.value)) {
+          colorInput.value = hexInput.value;
+          updateStopColor(i, hexInput.value);
+        }
+      });
+      posInput.addEventListener("input", () => {
+        const pos = parseInt(posInput.value, 10) / 100;
+        div.querySelector("span")!.textContent = `${posInput.value}%`;
+        config = updateStop(config, i, { position: pos });
+        updateUI();
+      });
+      removeBtn.addEventListener("click", () => {
+        if (config.stops.length <= 2) return;
+        config = removeStop(config, i);
+        updateUI();
+      });
+    });
+  }
+
+  function updateStopColor(index: number, color: string) {
+    config = updateStop(config, index, { color });
+    updateUI();
+  }
+
+  function renderPreview() {
+    const css = generateGradientCSS(config);
+    previewGrid.innerHTML = "";
+    const samples = [
+      { label: "Full Background", className: "preview-full" },
+      { label: "Button", className: "preview-btn" },
+      { label: "Card", className: "preview-card" },
+      { label: "Text Gradient", className: "preview-text" },
+    ];
+
+    samples.forEach(s => {
+      const div = document.createElement("div");
+      div.className = "card";
+      div.style.padding = "1rem";
+      div.style.minHeight = "100px";
+      if (s.className === "preview-full") {
+        div.style.background = css;
+        div.style.borderRadius = "8px";
+        div.innerHTML = `<div class="field-label">${s.label}</div>`;
+      } else if (s.className === "preview-btn") {
+        div.innerHTML = `<div class="field-label">${s.label}</div><button style="width:100%;padding:1rem;border:none;border-radius:8px;font-weight:600;background:${css};color:white;border:2px solid transparent">Gradient Button</button>`;
+      } else if (s.className === "preview-card") {
+        div.innerHTML = `<div class="field-label">${s.label}</div><div style="padding:1.5rem;border-radius:8px;background:${css};color:white">Gradient Card Content</div>`;
+      } else if (s.className === "preview-text") {
+        div.innerHTML = `<div class="field-label">${s.label}</div><h2 style="font-size:2rem;font-weight:800;background:${css};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">Gradient Text</h2>`;
+      }
+      previewGrid.appendChild(div);
+    });
+
+    output.textContent = css;
+  }
+
+  function renderPresets() {
+    PRESETS.forEach(preset => {
+      const div = document.createElement("div");
+      div.className = "card";
+      div.style.padding = "0.75rem";
+      div.style.cursor = "pointer";
+      div.style.textAlign = "center";
+      div.innerHTML = `
+        <div style="height:50px;border-radius:8px;background:${generateGradientCSS(preset.config)};margin-bottom:0.5rem"></div>
+        <div class="field-label">${preset.name}</div>
+      `;
+      div.addEventListener("click", () => {
+        config = { ...preset.config, stops: preset.config.stops.map(s => ({ ...s })) };
+        updateUI();
+      });
+      presetsContainer.appendChild(div);
+    });
+  }
+
+  function addNewStop() {
+    const positions = config.stops.map(s => s.position).sort((a, b) => a - b);
+    let newPos = 0.5;
+    if (positions.length >= 2) {
+      const gaps = positions.slice(1).map((p, i) => p - positions[i]);
+      const maxGapIdx = gaps.indexOf(Math.max(...gaps));
+      newPos = positions[maxGapIdx] + gaps[maxGapIdx] / 2;
+    }
+    const colors = ["#ff6b6b", "#4ecdc4", "#ffe66d", "#95e1d3", "#f38181", "#aa96da", "#fcbad3", "#a8d8ea"];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    config = addStop(config, color, newPos);
+    updateUI();
+  }
+
+  function randomStops() {
+    const colors = ["#ff6b6b", "#4ecdc4", "#ffe66d", "#95e1d3", "#f38181", "#aa96da", "#fcbad3", "#a8d8ea", "#5a5bd9", "#fafaf8"];
+    const count = 3 + Math.floor(Math.random() * 4);
+    config = {
+      ...config,
+      stops: Array.from({ length: count }, (_, i) => ({
+        color: colors[Math.floor(Math.random() * colors.length)],
+        position: i / (count - 1),
+      })),
+    };
+    updateUI();
+  }
+
+  typeInputs.forEach(input => {
+    input.addEventListener("change", () => {
+      config = createDefaultGradient(input.value as "linear" | "radial" | "conic");
+      updateUI();
+    });
+  });
+
+  angleSlider.addEventListener("input", () => {
+    angleInput.value = angleSlider.value;
+    config = { ...config, angle: parseInt(angleSlider.value, 10) };
+    updateUI();
+  });
+  angleInput.addEventListener("input", () => {
+    angleSlider.value = angleInput.value;
+    config = { ...config, angle: parseInt(angleInput.value, 10) };
+    updateUI();
+  });
+  conicAngleSlider.addEventListener("input", () => {
+    conicAngleInput.value = conicAngleSlider.value;
+    config = { ...config, angle: parseInt(conicAngleSlider.value, 10) };
+    updateUI();
+  });
+  conicAngleInput.addEventListener("input", () => {
+    conicAngleSlider.value = conicAngleInput.value;
+    config = { ...config, angle: parseInt(conicAngleInput.value, 10) };
+    updateUI();
+  });
+  shapeSelect.addEventListener("change", () => {
+    config = { ...config, shape: shapeSelect.value as "circle" | "ellipse" };
+    updateUI();
+  });
+  sizeSelect.addEventListener("change", () => {
+    config = { ...config, size: sizeSelect.value as GradientConfig["size"] };
+    updateUI();
+  });
+
+  document.querySelector("[data-add-stop]")!.addEventListener("click", addNewStop);
+  document.querySelector("[data-random-stops]")!.addEventListener("click", randomStops);
+  document.querySelector("[data-copy-css]")!.addEventListener("click", () => copyTextWithFeedback(output.textContent || "", output));
+  document.querySelector("[data-download-png]")!.addEventListener("click", () => {
+    const canvas = gradientToCanvas(config, 800, 400);
+    canvas.toBlob(blob => blob && downloadBlob(blob, "gradient.png"));
+  });
+
+  updateUI();
+</script>

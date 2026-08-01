@@ -1,0 +1,119 @@
+---
+// mr timestamp — TimeStampSmith. Instant timestamp conversion.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Timestamp / Date</span>
+    <input class="input" type="text" placeholder="Unix timestamp, ISO string, or any date format…" data-input />
+    <div class="actions" style="margin-top: 0.5rem;">
+      <button class="btn" data-now>Use Current Time</button>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-convert>Convert</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));" data-results></div>
+
+  <output class="output-box error-text" data-error style="display: none;"></output>
+</section>
+
+<script>
+  import { convertTimestamp, now } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLInputElement>("[data-input]")!;
+  const nowBtn = document.querySelector<HTMLButtonElement>("[data-now]")!;
+  const convertBtn = document.querySelector<HTMLButtonElement>("[data-convert]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const results = document.querySelector<HTMLDivElement>("[data-results]")!;
+  const errorBox = document.querySelector<HTMLOutputElement>("[data-error]")!;
+
+  if (!input || !nowBtn || !convertBtn || !clearBtn || !results || !errorBox) {
+    throw new Error("mr timestamp mount failed");
+  }
+
+  let debounce: number;
+
+  function showError(msg: string) {
+    errorBox.textContent = msg;
+    errorBox.style.display = "block";
+  }
+
+  function clearError() {
+    errorBox.textContent = "";
+    errorBox.style.display = "none";
+  }
+
+  function renderResults(items: { label: string; value: string }[]) {
+    results.innerHTML = "";
+    for (const item of items) {
+      const card = document.createElement("div");
+      card.className = "output-box";
+      card.style.margin = "0";
+
+      const name = document.createElement("div");
+      name.className = "field-label";
+      name.textContent = item.label;
+
+      const pre = document.createElement("div");
+      pre.textContent = item.value;
+      pre.style.fontFamily = "var(--mono)";
+      pre.style.wordBreak = "break-all";
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.textContent = "Copy";
+      btn.style.marginTop = "0.5rem";
+      btn.addEventListener("click", () => copyTextWithFeedback(item.value, btn));
+
+      card.append(name, pre, btn);
+      results.appendChild(card);
+    }
+  }
+
+  function doConvert() {
+    clearError();
+    const text = input.value.trim();
+    if (!text) {
+      showError("Enter a timestamp or date");
+      return;
+    }
+
+    const converted = convertTimestamp(text);
+    if (converted.length === 0) {
+      showError("Could not parse input as a valid timestamp or date");
+      return;
+    }
+
+    renderResults(converted);
+  }
+
+  function clearAll() {
+    input.value = "";
+    results.innerHTML = "";
+    clearError();
+  }
+
+  convertBtn.addEventListener("click", doConvert);
+  clearBtn.addEventListener("click", clearAll);
+  nowBtn.addEventListener("click", () => {
+    input.value = Date.now().toString();
+    doConvert();
+  });
+
+  // Instant convert
+  input.addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = window.setTimeout(() => {
+      if (input.value.trim()) doConvert();
+    }, 200);
+  });
+
+  // Initial load with current time
+  const initial = now();
+  renderResults(initial);
+</script>

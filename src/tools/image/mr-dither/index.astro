@@ -1,0 +1,154 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button">
+    <input type="file" accept="image/*" data-file hidden />
+    <div class="dz-title">Drop an image or click to browse</div>
+    <div class="dz-hint">PNG, JPEG, or WebP — nothing uploads.</div>
+  </div>
+
+  <div class="grid" data-controls style="display:none;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+    <label class="field">
+      <span class="field-label">Algorithm</span>
+      <select class="input" data-mode>
+        <option value="fs">Floyd-Steinberg</option>
+        <option value="ordered">Ordered (Bayer)</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">Depth</span>
+      <select class="input" data-bits>
+        <option value="1">1-bit (black &amp; white)</option>
+        <option value="2">2-bit (4 shades)</option>
+      </select>
+    </label>
+  </div>
+
+  <figure data-preview style="display:none">
+    <figcaption class="field-label" data-label>Preview</figcaption>
+    <img data-out alt="Dithered image" />
+  </figure>
+
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-download disabled>Download PNG</button>
+  </div>
+  <p class="error-text" data-error style="display:none"></p>
+</section>
+
+<style>
+  figure {
+    margin: 0;
+  }
+  figure img {
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+</style>
+
+<script>
+  import { toGray, orderedDither, floydSteinberg } from "./tool.ts";
+  import { loadImageBitmap, imageDataOf, canvasToBlob } from "../_lib.ts";
+  import { swapExtension } from "@/lib/files";
+  import { downloadBlob } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const modeSelect = document.querySelector<HTMLSelectElement>("[data-mode]")!;
+  const bitsSelect = document.querySelector<HTMLSelectElement>("[data-bits]")!;
+  const controls = document.querySelector<HTMLDivElement>("[data-controls]")!;
+  const preview = document.querySelector<HTMLElement>("[data-preview]")!;
+  const outImg = document.querySelector<HTMLImageElement>("[data-out]")!;
+  const label = document.querySelector<HTMLElement>("[data-label]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
+
+  let bitmap: ImageBitmap | null = null;
+  let fileName = "";
+  let width = 0;
+  let height = 0;
+  let currentBlob: Blob | null = null;
+  let outUrl = "";
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d")!;
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) load(file);
+    fileInput.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) load(file);
+  });
+
+  function setError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+
+  async function load(file: File) {
+    setError("");
+    try {
+      const img = await loadImageBitmap(file);
+      bitmap = img.bitmap;
+      fileName = file.name;
+      width = img.width;
+      height = img.height;
+      controls.style.display = "";
+      preview.style.display = "";
+      render();
+    } catch {
+      setError("Could not read that file as an image.");
+    }
+  }
+
+  async function render() {
+    if (!bitmap) return;
+    const bits = Number(bitsSelect.value);
+    const gray = toGray(imageDataOf(canvas, bitmap).data);
+    const dithered =
+      modeSelect.value === "fs"
+        ? floydSteinberg(gray, width, height, bits)
+        : orderedDither(gray, width, height, bits);
+
+    const data = new ImageData(width, height);
+    for (let i = 0; i < dithered.length; i++) {
+      const v = dithered[i];
+      data.data[i * 4] = v;
+      data.data[i * 4 + 1] = v;
+      data.data[i * 4 + 2] = v;
+      data.data[i * 4 + 3] = 255;
+    }
+    ctx.clearRect(0, 0, width, height);
+    ctx.putImageData(data, 0, 0);
+    currentBlob = await canvasToBlob(canvas, "image/png");
+    if (outUrl) URL.revokeObjectURL(outUrl);
+    outUrl = URL.createObjectURL(currentBlob);
+    outImg.src = outUrl;
+    label.textContent = `${width}×${height} — ${bits}-bit, ${modeSelect.value === "fs" ? "Floyd-Steinberg" : "ordered"} dither`;
+    downloadBtn.disabled = false;
+  }
+
+  modeSelect.addEventListener("change", render);
+  bitsSelect.addEventListener("change", render);
+
+  downloadBtn.addEventListener("click", () => {
+    if (!currentBlob) return;
+    downloadBlob(currentBlob, swapExtension(fileName, "png"));
+  });
+</script>

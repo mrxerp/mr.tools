@@ -1,0 +1,45 @@
+---
+// mr.word salad — scramble, reverse, or sort your words.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Text</span>
+    <textarea class="input" rows="8" placeholder="Paste something to mangle…" data-input></textarea>
+  </label>
+  <label class="field">
+    <span class="field-label">Mode</span>
+    <select class="input" data-mode>
+      <option value="scramble" selected>Scramble (keep first and last letters)</option>
+      <option value="reverse">Reverse sentence word order</option>
+      <option value="sort">Sort letters in each word</option>
+    </select>
+  </label>
+  <div class="actions">
+    <button class="btn" type="button" data-shuffle>Re-scramble</button>
+    <button class="btn" type="button" data-copy>Copy</button>
+  </div>
+  <div class="output-box" data-out aria-live="polite"></div>
+</section>
+
+<script>
+  import { salad, type SaladMode } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const mode = document.querySelector<HTMLSelectElement>("[data-mode]")!;
+  const shuffleBtn = document.querySelector<HTMLButtonElement>("[data-shuffle]")!;
+  const copy = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const out = document.querySelector<HTMLDivElement>("[data-out]")!;
+  if (!input || !mode || !shuffleBtn || !copy || !out) throw new Error("mr word salad mount failed");
+
+  function render() {
+    const m = mode.value as SaladMode;
+    out.textContent = input.value === "" ? "" : salad(input.value, m);
+  }
+
+  copy.addEventListener("click", () => copyTextWithFeedback(out.textContent ?? "", copy));
+  input.addEventListener("input", render);
+  mode.addEventListener("change", render);
+  shuffleBtn.addEventListener("click", render);
+  render();
+</script>

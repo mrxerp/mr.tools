@@ -1,0 +1,190 @@
+---
+// mr.streak — local habit tracker grid with current and best streak.
+---
+<section class="stage">
+  <div class="field">
+    <label class="field-label" for="habit">Habit name</label>
+    <input class="input" id="habit" type="text" placeholder="e.g. Read" style="max-width:20rem" />
+  </div>
+
+  <div class="streak-head">
+    <span class="field-label">Tap days on the grid</span>
+    <span class="streak-nav">
+      <button class="button button--secondary" data-prev type="button">◀</button>
+      <strong data-mon></strong>
+      <button class="button button--secondary" data-next type="button">▶</button>
+    </span>
+  </div>
+  <div class="grid" data-grid role="grid" aria-label="habit calendar"></div>
+  <div class="weekdays">
+    <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span>
+    <span>Thu</span><span>Fri</span><span>Sat</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><span class="stat-label">Current streak</span><strong data-cur>0</strong></div>
+    <div class="stat"><span class="stat-label">Best streak</span><strong data-best>0</strong></div>
+    <div class="stat"><span class="stat-label">Days tracked</span><strong data-total>0</strong></div>
+  </div>
+
+  <div class="actions">
+    <button class="button" data-copy type="button">Copy streak card</button>
+    <button class="button button--secondary" data-clear type="button">Clear all</button>
+  </div>
+</section>
+
+<style>
+  .streak-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 1rem;
+  }
+  .streak-nav {
+    display: inline-flex;
+    gap: 0.4rem;
+    align-items: center;
+  }
+  .streak-nav strong {
+    min-width: 7rem;
+    text-align: center;
+  }
+  .weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.25rem;
+    margin-top: 0.4rem;
+    font-size: 0.8rem;
+    text-align: center;
+    opacity: 0.75;
+  }
+  .streak-day {
+    aspect-ratio: 1;
+    border-radius: 0.4rem;
+    border: 1px solid var(--border);
+    background: var(--bg-soft);
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+  }
+  .streak-day:hover {
+    border-color: var(--accent);
+  }
+  .streak-day.on {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .stats {
+    display: flex;
+    gap: 1.5rem;
+    margin-block: 1.2rem;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+  }
+  .stat-label {
+    font-size: 0.8rem;
+    opacity: 0.75;
+  }
+  .stat strong {
+    font-size: 1.5rem;
+  }
+  .actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+</style>
+
+<script>
+  import { copyTextWithFeedback } from "../../../lib/clipboard";
+  import { computeStreaks, monthGrid, streakCardText } from "./tool.ts";
+
+  const STORAGE = "mr-streak-dates-v1";
+  const habitEl = document.querySelector<HTMLInputElement>("#habit")!;
+  const gridEl = document.querySelector<HTMLDivElement>("[data-grid]")!;
+  const monEl = document.querySelector<HTMLElement>("[data-mon]")!;
+  const prevBtn = document.querySelector<HTMLButtonElement>("[data-prev]")!;
+  const nextBtn = document.querySelector<HTMLButtonElement>("[data-next]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const curEl = document.querySelector<HTMLElement>("[data-cur]")!;
+  const bestEl = document.querySelector<HTMLElement>("[data-best]")!;
+  const totalEl = document.querySelector<HTMLElement>("[data-total]")!;
+  if (!habitEl || !gridEl || !monEl || !prevBtn || !nextBtn || !copyBtn || !clearBtn || !curEl || !bestEl || !totalEl) {
+    throw new Error("mr.streak mount failed");
+  }
+
+  let dates = new Set<string>(JSON.parse(localStorage.getItem(STORAGE) ?? "[]"));
+  const now = new Date();
+  let view = { year: now.getFullYear(), month: now.getMonth() };
+  const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+  function save() {
+    localStorage.setItem(STORAGE, JSON.stringify([...dates].sort()));
+    render();
+  }
+  function todayISO() {
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  }
+
+  function render() {
+    monEl.textContent = `${months[view.month]} ${view.year}`;
+    const cells = monthGrid(view.year, view.month, [...dates]);
+    const today = todayISO();
+    gridEl.innerHTML = "";
+    for (const cell of cells) {
+      if (cell.day === null) {
+        const sp = document.createElement("span");
+        gridEl.appendChild(sp);
+        continue;
+      }
+      const iso = `${view.year}-${String(view.month + 1).padStart(2, "0")}-${String(cell.day).padStart(2, "0")}`;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "streak-day";
+      btn.classList.toggle("on", cell.marked);
+      if (iso === today) btn.title = "Today";
+      btn.textContent = String(cell.day);
+      btn.addEventListener("click", () => {
+        if (cell.marked) dates.delete(iso);
+        else dates.add(iso);
+        save();
+      });
+      gridEl.appendChild(btn);
+    }
+    const s = computeStreaks([...dates], today);
+    curEl.textContent = String(s.current);
+    bestEl.textContent = String(s.best);
+    totalEl.textContent = String(s.total);
+  }
+
+  prevBtn.addEventListener("click", () => {
+    if (view.month === 0) {
+      view = { year: view.year - 1, month: 11 };
+    } else {
+      view = { year: view.year, month: view.month - 1 };
+    }
+    render();
+  });
+  nextBtn.addEventListener("click", () => {
+    if (view.month === 11) {
+      view = { year: view.year + 1, month: 0 };
+    } else {
+      view = { year: view.year, month: view.month + 1 };
+    }
+    render();
+  });
+  copyBtn.addEventListener("click", () => {
+    copyTextWithFeedback(streakCardText([...dates], todayISO(), habitEl.value), copyBtn);
+  });
+  clearBtn.addEventListener("click", () => {
+    if (window.confirm("Clear all tracked days?")) {
+      dates = new Set();
+      save();
+    }
+  });
+
+  render();
+</script>

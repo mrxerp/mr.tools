@@ -1,0 +1,260 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose CSV or XLSX file to convert">
+    <input type="file" accept=".csv,.xlsx,.json,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/json" data-input hidden />
+    <span class="dz-title">Drop a CSV, XLSX, or JSON file here or click to browse</span>
+    <span class="dz-hint">Convert between spreadsheet formats and JSON with type control.</span>
+  </div>
+
+  <fieldset class="field" data-direction style="display:none;margin-top:1rem">
+    <legend class="field-label">Conversion direction</legend>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="radio" name="dir" value="to-json" checked data-dir-to-json /> Spreadsheet → JSON
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="radio" name="dir" value="to-sheet" data-dir-to-sheet /> JSON → CSV / XLSX
+    </label>
+  </fieldset>
+
+  <div data-to-json-options style="display:none;margin-top:1rem">
+    <fieldset class="field">
+      <legend class="field-label">JSON output format</legend>
+      <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+        <input type="radio" name="jsonfmt" value="objects" checked /> Array of objects
+      </label>
+      <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+        <input type="radio" name="jsonfmt" value="array" /> 2D array (with header row)
+      </label>
+      <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+        <input type="radio" name="jsonfmt" value="columns" /> Column-oriented object
+      </label>
+    </fieldset>
+    <div data-column-config style="max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0.5rem"></div>
+  </div>
+
+  <div data-to-sheet-options style="display:none;margin-top:1rem">
+    <fieldset class="field">
+      <legend class="field-label">Output format</legend>
+      <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+        <input type="radio" name="outfmt" value="csv" checked /> CSV
+      </label>
+      <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+        <input type="radio" name="outfmt" value="xlsx" /> XLSX
+      </label>
+    </fieldset>
+  </div>
+
+  <div class="actions" style="margin-top:1rem">
+    <button type="button" class="btn btn-primary" data-run disabled>Convert</button>
+    <button type="button" class="btn" data-download-json hidden>Download JSON</button>
+    <button type="button" class="btn" data-download-csv hidden>Download CSV</button>
+    <button type="button" class="btn" data-download-xlsx hidden>Download XLSX</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+
+  <details data-preview style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Preview (first 1000 chars)</summary>
+    <div class="output-box" style="max-height:200px;overflow:auto;font-size:0.8rem" data-preview-content></div>
+  </details>
+</section>
+
+<script>
+  import { spreadsheetToJson, jsonToSpreadsheet } from "./tool.ts";
+  import { readFileAsArrayBuffer, readFileAsText, formatBytes, swapExtension, fileNameOf } from "@/lib/files";
+  import { downloadText, downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const dirEl = document.querySelector<HTMLFieldSetElement>("[data-direction]");
+  const toJsonOpts = document.querySelector<HTMLDivElement>("[data-to-json-options]");
+  const toSheetOpts = document.querySelector<HTMLDivElement>("[data-to-sheet-options]");
+  const colConfig = document.querySelector<HTMLDivElement>("[data-column-config]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const dlJson = document.querySelector<HTMLButtonElement>("[data-download-json]");
+  const dlCsv = document.querySelector<HTMLButtonElement>("[data-download-csv]");
+  const dlXlsx = document.querySelector<HTMLButtonElement>("[data-download-xlsx]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  const preview = document.querySelector<HTMLDivElement>("[data-preview-content]");
+
+  if (!zone || !input || !dirEl || !toJsonOpts || !toSheetOpts || !colConfig || !run ||
+      !dlJson || !dlCsv || !dlXlsx || !out || !preview) {
+    throw new Error("mr excel mount failed");
+  }
+
+  let file: File | null = null;
+  let isXlsx = false;
+  let isJson = false;
+  let headers: string[] = [];
+  let lastJson: unknown = null;
+  let lastCsv = "";
+  let lastXlsx: Uint8Array | null = null;
+
+  const updateDirectionUI = () => {
+    const toJson = document.querySelector<HTMLInputElement>('input[name="dir"][value="to-json"]')!.checked;
+    toJsonOpts.style.display = toJson ? "" : "none";
+    toSheetOpts.style.display = toJson ? "none" : "";
+  };
+
+  const buildColumnConfig = () => {
+    colConfig.innerHTML = "";
+    for (const h of headers) {
+      const wrap = document.createElement("label");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.gap = "0.5rem";
+      wrap.style.margin = "0.3rem 0";
+      wrap.innerHTML = `
+        <span style="width:140px;font-size:0.85rem">${h}</span>
+        <select class="input" style="flex:1;max-width:180px" data-col="${h}">
+          <option value="auto">Auto</option>
+          <option value="string">String</option>
+          <option value="number">Number</option>
+          <option value="boolean">Boolean</option>
+          <option value="date">Date (ISO)</option>
+        </select>
+      `;
+      colConfig.appendChild(wrap);
+    }
+  };
+
+  const getColumnConfigs = () => {
+    const configs: { name: string; type: "string" | "number" | "boolean" | "date" | "auto"; dateFormat?: string }[] = [];
+    for (const h of headers) {
+      const sel = colConfig.querySelector<HTMLSelectElement>(`[data-col="${h}"]`);
+      if (sel) configs.push({ name: h, type: sel.value as any, dateFormat: sel.value === "date" ? "iso" : undefined });
+    }
+    return configs;
+  };
+
+  const addFile = async (f: File) => {
+    file = f;
+    isXlsx = f.name.toLowerCase().endsWith(".xlsx") || f.type.includes("spreadsheetml");
+    isJson = f.name.toLowerCase().endsWith(".json") || f.type === "application/json";
+    dirEl.style.display = "";
+    run.disabled = false;
+    out.textContent = `Ready: ${f.name} (${formatBytes(f.size)})`;
+    preview.textContent = "";
+    dlJson.hidden = dlCsv.hidden = dlXlsx.hidden = true;
+    lastJson = lastCsv = "";
+    lastXlsx = null;
+
+    if (isJson) {
+      try {
+        const text = await readFileAsText(f);
+        lastJson = JSON.parse(text);
+        if (Array.isArray(lastJson) && lastJson.length > 0 && typeof lastJson[0] === "object" && !Array.isArray(lastJson[0])) {
+          headers = [...new Set(lastJson.flatMap((r: any) => Object.keys(r)))];
+        } else if (lastJson && typeof lastJson === "object") {
+          headers = Object.keys(lastJson);
+        } else if (Array.isArray(lastJson) && Array.isArray(lastJson[0])) {
+          headers = (lastJson[0] as string[]).map((_, i) => `col${i + 1}`);
+        }
+        buildColumnConfig();
+        document.querySelector<HTMLInputElement>('[data-dir-to-sheet]')!.checked = true;
+        updateDirectionUI();
+      } catch {
+        out.innerHTML = '<div class="error-text">Invalid JSON file.</div>';
+        run.disabled = true;
+      }
+    } else {
+      document.querySelector<HTMLInputElement>('[data-dir-to-json]')!.checked = true;
+      updateDirectionUI();
+      try {
+        if (isXlsx) {
+          const buf = await readFileAsArrayBuffer(f);
+          const XLSX = await import("xlsx");
+          const wb = XLSX.read(buf, { type: "array" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as string[][];
+          headers = data[0] || [];
+        } else {
+          const text = await readFileAsText(f);
+          const lines = text.split(/\r?\n/);
+          const firstLine = lines[0] || "";
+          const delim = [",", "\t", ";", "|"].find(d => firstLine.includes(d)) || ",";
+          headers = firstLine.split(delim).map(h => h.replace(/^"|"$/g, "").trim());
+        }
+        buildColumnConfig();
+      } catch {
+        out.innerHTML = '<div class="error-text">Failed to read spreadsheet.</div>';
+        run.disabled = true;
+      }
+    }
+  };
+
+  const doConvert = async () => {
+    if (!file) return;
+    run.disabled = true;
+    out.textContent = "Converting…";
+    try {
+      const toJson = document.querySelector<HTMLInputElement>('input[name="dir"][value="to-json"]')!.checked;
+      if (toJson) {
+        let data: string | Uint8Array;
+        if (isXlsx) data = await readFileAsArrayBuffer(file);
+        else if (isJson) data = JSON.stringify(lastJson);
+        else data = await readFileAsText(file);
+
+        const jsonFormat = document.querySelector<HTMLInputElement>('input[name="jsonfmt"]:checked')!.value as "array" | "objects" | "columns";
+        const result = await spreadsheetToJson(data, isXlsx, {
+          columns: getColumnConfigs(),
+          includeHeader: true,
+          jsonFormat,
+        });
+        lastJson = result.json;
+        const jsonStr = JSON.stringify(result.json, null, 2);
+        preview.textContent = jsonStr.slice(0, 1000);
+        out.textContent = `Converted to JSON (${formatBytes(new TextEncoder().encode(jsonStr).length)}).`;
+        dlJson.hidden = false;
+      } else {
+        const outFmt = document.querySelector<HTMLInputElement>('input[name="outfmt"]:checked')!.value as "csv" | "xlsx";
+        const result = await jsonToSpreadsheet(lastJson || (isXlsx ? (await readFileAsArrayBuffer(file)) : await readFileAsText(file)), {
+          columns: [],
+          includeHeader: true,
+          jsonFormat: "objects",
+        });
+        if (result.csv) {
+          lastCsv = result.csv;
+          preview.textContent = result.csv.slice(0, 1000);
+          out.textContent = `Converted to CSV (${formatBytes(new TextEncoder().encode(result.csv).length)}).`;
+          dlCsv.hidden = false;
+        }
+        if (outFmt === "xlsx" && result.xlsx) {
+          lastXlsx = result.xlsx;
+          out.textContent += ` XLSX ready (${formatBytes(result.xlsx.length)}).`;
+          dlXlsx.hidden = false;
+        }
+      }
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Conversion failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = !file;
+    }
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  input.addEventListener("change", () => { if (input.files?.[0]) addFile(input.files[0]); input.value = ""; });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("drag"); if (e.dataTransfer?.files?.[0]) addFile(e.dataTransfer.files[0]); });
+
+  for (const r of document.querySelectorAll<HTMLInputElement>('input[name="dir"]')) r.addEventListener("change", updateDirectionUI);
+
+  run.addEventListener("click", doConvert);
+
+  dlJson.addEventListener("click", () => {
+    if (lastJson && file) downloadText(JSON.stringify(lastJson, null, 2), swapExtension(fileNameOf(file), "json"), "application/json");
+  });
+  dlCsv.addEventListener("click", () => {
+    if (lastCsv && file) downloadText(lastCsv, swapExtension(fileNameOf(file), "csv"), "text/csv");
+  });
+  dlXlsx.addEventListener("click", () => {
+    if (lastXlsx && file) downloadArrayBuffer(lastXlsx, swapExtension(fileNameOf(file), "xlsx"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  });
+</script>

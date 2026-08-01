@@ -1,0 +1,187 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose CSV file to lint">
+    <input type="file" accept=".csv,text/csv" data-input hidden />
+    <span class="dz-title">Drop a CSV file here or click to browse</span>
+    <span class="dz-hint">Validate CSV syntax and structure. Check for quoting errors, inconsistent columns, and malformed rows.</span>
+  </div>
+
+  <fieldset class="field" data-options style="display:none;margin-top:1rem">
+    <legend class="field-label">Lint options</legend>
+    <label class="field" style="margin:0.5rem 0">
+      <span class="field-label">Expected columns (optional, auto-detected from header if empty)</span>
+      <input type="number" class="input" min="1" data-expected-cols placeholder="Auto-detect" />
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-strict-quoting /> Strict quoting (warn on unquoted delimiters/newlines)
+    </label>
+    <label class="field" style="margin:0.5rem 0">
+      <span class="field-label">Force delimiter (optional, auto-detected if empty)</span>
+      <input type="text" class="input" maxlength="1" data-delimiter placeholder="Auto" />
+    </label>
+  </fieldset>
+
+  <div class="actions" style="margin-top:1rem">
+    <button type="button" class="btn btn-primary" data-run disabled>Lint CSV</button>
+    <button type="button" class="btn" data-download-report hidden>Download report (txt)</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+
+  <details data-summary style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Summary</summary>
+    <div data-stats></div>
+  </details>
+
+  <details data-issues style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Issues (all)</summary>
+    <div style="max-height:400px;overflow:auto;font-family:var(--mono);font-size:0.8rem" data-issue-list></div>
+  </details>
+
+  <details data-sample style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Sample rows (first 10)</summary>
+    <div style="overflow:auto;max-height:200px;border:1px solid var(--border);border-radius:var(--radius-sm)" data-sample-content></div>
+  </details>
+</section>
+
+<style>
+  .lint-grid { display:grid; gap:0; font-family:var(--mono); font-size:0.75rem; }
+  .lint-header { background:var(--accent-soft); font-weight:600; }
+  .lint-error { background:#fdeaea; }
+  .lint-warning { background:#fff8e1; }
+  .lint-cell { padding:0.15rem 0.3rem; border:1px solid var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px; }
+</style>
+
+<script>
+  import { lintCSV, generateReport } from "./tool.ts";
+  import { readFileAsText, formatBytes, swapExtension, fileNameOf } from "@/lib/files";
+  import { downloadText } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const opts = document.querySelector<HTMLFieldSetElement>("[data-options]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const dlReport = document.querySelector<HTMLButtonElement>("[data-download-report]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  const stats = document.querySelector<HTMLDivElement>("[data-stats]");
+  const issueList = document.querySelector<HTMLDivElement>("[data-issue-list]");
+  const sampleContent = document.querySelector<HTMLDivElement>("[data-sample-content]");
+  const expectedCols = document.querySelector<HTMLInputElement>("[data-expected-cols]");
+  const strictQuoting = document.querySelector<HTMLInputElement>("[data-strict-quoting]");
+  const delimiterInput = document.querySelector<HTMLInputElement>("[data-delimiter]");
+
+  if (!zone || !input || !opts || !run || !dlReport || !out || !stats ||
+      !issueList || !sampleContent || !expectedCols || !strictQuoting || !delimiterInput) {
+    throw new Error("mr lint mount failed");
+  }
+
+  let file: File | null = null;
+  let lastResult: ReturnType<typeof lintCSV> | null = null;
+
+  const addFile = (f: File) => {
+    file = f;
+    opts.style.display = "";
+    run.disabled = false;
+    out.textContent = `Ready: ${f.name} (${formatBytes(f.size)})`;
+    stats.textContent = "";
+    issueList.textContent = "";
+    sampleContent.textContent = "";
+    dlReport.hidden = true;
+    lastResult = null;
+  };
+
+  const renderStats = (result: ReturnType<typeof lintCSV>) => {
+    const { stats: s, headers } = result;
+    stats.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.5rem;margin-top:0.5rem">
+        <div class="output-box" style="margin:0"><div class="field-label">Total lines</div><div>${s.totalLines}</div></div>
+        <div class="output-box" style="margin:0"><div class="field-label">Valid rows</div><div>${s.validRows}</div></div>
+        <div class="output-box" style="margin:0"><div class="field-label">Columns</div><div>${headers.length}</div></div>
+        <div class="output-box ${s.errors > 0 ? "error-text" : "ok-text"}" style="margin:0"><div class="field-label">Errors</div><div>${s.errors}</div></div>
+        <div class="output-box ${s.warnings > 0 ? "error-text" : "ok-text"}" style="margin:0"><div class="field-label">Warnings</div><div>${s.warnings}</div></div>
+      </div>
+    `;
+  };
+
+  const renderIssues = (result: ReturnType<typeof lintCSV>) => {
+    if (result.issues.length === 0) {
+      issueList.textContent = "No issues found.";
+      return;
+    }
+    let html = "";
+    for (const issue of result.issues) {
+      const col = issue.column ? `, col ${issue.column}` : "";
+      const cls = issue.severity === "error" ? "lint-error" : "lint-warning";
+      html += `<div class="${cls}" style="padding:0.3rem 0.5rem;margin:0.2rem 0;border-radius:4px">
+        <strong>${issue.severity.toUpperCase()} [${issue.code}]</strong> Line ${issue.line}${col}: ${issue.message}
+        <div style="margin-top:0.15rem;color:var(--muted);font-size:0.75rem">${issue.context}</div>
+      </div>`;
+    }
+    issueList.innerHTML = html;
+  };
+
+  const renderSample = (result: ReturnType<typeof lintCSV>) => {
+    if (result.sampleRows.length === 0) {
+      sampleContent.textContent = "No data rows.";
+      return;
+    }
+    let html = `<table class="lint-grid" style="border-collapse:collapse;width:100%"><thead><tr>`;
+    for (const h of result.headers) {
+      html += `<th class="lint-cell lint-header">${h}</th>`;
+    }
+    html += `</tr></thead><tbody>`;
+    for (const row of result.sampleRows) {
+      html += `<tr>`;
+      for (const cell of row) {
+        html += `<td class="lint-cell">${cell}</td>`;
+      }
+      html += `</tr>`;
+    }
+    html += `</tbody></table>`;
+    sampleContent.innerHTML = html;
+  };
+
+  const doLint = () => {
+    if (!file) return;
+    run.disabled = true;
+    out.textContent = "Linting…";
+    try {
+      const text = file.text();
+      text.then(async (content) => {
+        const options = {
+          expectedColumns: expectedCols.value ? parseInt(expectedCols.value, 10) : undefined,
+          delimiter: delimiterInput.value || undefined,
+          strictQuoting: strictQuoting.checked,
+        };
+        lastResult = lintCSV(content, options);
+        renderStats(lastResult);
+        renderIssues(lastResult);
+        renderSample(lastResult);
+        out.textContent = `Done: ${lastResult.stats.issuesFound} issues (${lastResult.stats.errors} errors, ${lastResult.stats.warnings} warnings).`;
+        dlReport.hidden = false;
+        run.disabled = false;
+      });
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Lint failed.";
+      out.appendChild(errEl);
+      run.disabled = false;
+    }
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  input.addEventListener("change", () => { if (input.files?.[0]) addFile(input.files[0]); input.value = ""; });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("drag"); if (e.dataTransfer?.files?.[0]) addFile(e.dataTransfer.files[0]); });
+
+  run.addEventListener("click", doLint);
+
+  dlReport.addEventListener("click", () => {
+    if (lastResult && file) downloadText(generateReport(lastResult), swapExtension(fileNameOf(file), "txt"), "text/plain");
+  });
+</script>

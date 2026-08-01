@@ -1,0 +1,92 @@
+---
+// mr.anniversary — milestone anniversaries and day-of-week trivia.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+    <label class="field">
+      <span class="field-label">From date</span>
+      <input class="input" type="date" data-from />
+    </label>
+    <label class="field">
+      <span class="field-label">As of</span>
+      <input class="input" type="date" data-asof />
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn" type="button" data-today>As of today</button>
+    <button class="btn" type="button" data-copy>Copy card</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { dateLabel, dayOfWeek, milestoneCardText, milestoneList, type Milestone } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const fromEl = document.querySelector<HTMLInputElement>("[data-from]")!;
+  const asofEl = document.querySelector<HTMLInputElement>("[data-asof]")!;
+  const todayBtn = document.querySelector<HTMLButtonElement>("[data-today]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
+  if (!fromEl || !asofEl || !todayBtn || !copyBtn || !out) throw new Error("mr.anniversary mount failed");
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parse = (v: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(NaN);
+  };
+
+  let milestones: Milestone[] = [];
+
+  function render() {
+    out.innerHTML = "";
+    const from = parse(fromEl.value);
+    const asof = asofEl.value ? parse(asofEl.value) : new Date();
+    if (!fromEl.value) {
+      out.textContent = "Enter a start date to see its milestones.";
+      return;
+    }
+    if (Number.isNaN(from.getTime()) || Number.isNaN(asof.getTime())) {
+      const el = document.createElement("div");
+      el.className = "error-text";
+      el.textContent = "Enter valid dates.";
+      out.appendChild(el);
+      return;
+    }
+    if (from.getTime() > asof.getTime()) {
+      const el = document.createElement("div");
+      el.className = "error-text";
+      el.textContent = "The from date is in the future relative to the as-of date.";
+      out.appendChild(el);
+      return;
+    }
+    milestones = milestoneList(from, asof);
+    out.innerHTML = "";
+    const head = document.createElement("div");
+    head.textContent = `${dateLabel(from)} was a ${dayOfWeek(from)}.`;
+    out.appendChild(head);
+    for (const m of milestones) {
+      const el = document.createElement("div");
+      el.textContent = `${m.label} → ${dateLabel(m.date)} (${m.daysAway} day${m.daysAway === 1 ? "" : "s"} away)`;
+      out.appendChild(el);
+    }
+  }
+
+  fromEl.addEventListener("input", render);
+  asofEl.addEventListener("input", render);
+  todayBtn.addEventListener("click", () => {
+    asofEl.value = iso(new Date());
+    render();
+  });
+  copyBtn.addEventListener("click", () => {
+    const from = parse(fromEl.value);
+    if (milestones.length && !Number.isNaN(from.getTime())) {
+      copyTextWithFeedback(milestoneCardText(milestones, from), copyBtn);
+    }
+  });
+
+  fromEl.value = iso(new Date(2016, 4, 20));
+  asofEl.value = iso(new Date());
+  render();
+</script>

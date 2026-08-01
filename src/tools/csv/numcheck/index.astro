@@ -1,0 +1,174 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose CSV or XLSX file to check">
+    <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-input hidden />
+    <span class="dz-title">Drop a CSV or XLSX file here or click to browse</span>
+    <span class="dz-hint">Scan for numeric data quality issues.</span>
+  </div>
+
+  <fieldset class="field" data-options style="display:none;margin-top:1rem">
+    <legend class="field-label">Check options</legend>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-opt-numeric /> Detect numeric columns automatically
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-opt-currency /> Normalize currency ($1,234.56 → 1234.56)
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-opt-percent /> Normalize percent (5% → 0.05)
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" data-opt-outliers /> Detect outliers (IQR method)
+      <input type="number" class="input" value="3" min="1" max="10" step="0.5" style="width:60px" data-outlier-thresh />
+    </label>
+  </fieldset>
+
+  <div class="actions" style="margin-top:1rem">
+    <button type="button" class="btn btn-primary" data-run disabled>Check numbers</button>
+    <button type="button" class="btn" data-download-csv hidden>Download cleaned CSV</button>
+    <button type="button" class="btn" data-download-report hidden>Download report (txt)</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+
+  <details data-summary style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Summary</summary>
+    <div data-stats></div>
+  </details>
+
+  <details data-anomalies style="margin-top:1rem">
+    <summary class="field-label" style="cursor:pointer">Anomalies (first 100)</summary>
+    <div style="max-height:300px;overflow:auto;font-family:var(--mono);font-size:0.8rem" data-anomaly-list></div>
+  </details>
+</section>
+
+<script>
+  import { checkNumbers, generateReport } from "./tool.ts";
+  import { readFileAsArrayBuffer, readFileAsText, formatBytes, swapExtension, fileNameOf } from "@/lib/files";
+  import { downloadText } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const opts = document.querySelector<HTMLFieldSetElement>("[data-options]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const dlCsv = document.querySelector<HTMLButtonElement>("[data-download-csv]");
+  const dlReport = document.querySelector<HTMLButtonElement>("[data-download-report]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  const stats = document.querySelector<HTMLDivElement>("[data-stats]");
+  const anomalyList = document.querySelector<HTMLDivElement>("[data-anomaly-list]");
+  const optNumeric = document.querySelector<HTMLInputElement>("[data-opt-numeric]");
+  const optCurrency = document.querySelector<HTMLInputElement>("[data-opt-currency]");
+  const optPercent = document.querySelector<HTMLInputElement>("[data-opt-percent]");
+  const optOutliers = document.querySelector<HTMLInputElement>("[data-opt-outliers]");
+  const optThresh = document.querySelector<HTMLInputElement>("[data-outlier-thresh]");
+
+  if (!zone || !input || !opts || !run || !dlCsv || !dlReport || !out || !stats ||
+      !anomalyList || !optNumeric || !optCurrency || !optPercent || !optOutliers || !optThresh) {
+    throw new Error("mr numcheck mount failed");
+  }
+
+  let file: File | null = null;
+  let isXlsx = false;
+  let lastResult: Awaited<ReturnType<typeof checkNumbers>> | null = null;
+
+  const options = () => ({
+    detectNumericColumns: optNumeric.checked,
+    normalizeCurrency: optCurrency.checked,
+    normalizePercent: optPercent.checked,
+    detectOutliers: optOutliers.checked,
+    outlierThreshold: parseFloat(optThresh.value) || 3,
+  });
+
+  const addFile = (f: File) => {
+    file = f;
+    isXlsx = f.name.toLowerCase().endsWith(".xlsx") || f.type.includes("spreadsheetml");
+    opts.style.display = "";
+    run.disabled = false;
+    out.textContent = `Ready: ${f.name} (${formatBytes(f.size)})`;
+    stats.textContent = "";
+    anomalyList.textContent = "";
+    dlCsv.hidden = dlReport.hidden = true;
+    lastResult = null;
+  };
+
+  const renderStats = (result: Awaited<ReturnType<typeof checkNumbers>>) => {
+    const { stats: s, numericColumns, headers } = result;
+    stats.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.5rem;margin-top:0.5rem">
+        <div class="output-box" style="margin:0"><div class="field-label">Numeric columns</div><div>${numericColumns.map(i => headers[i]).join(", ") || "none"}</div></div>
+        <div class="output-box" style="margin:0"><div class="field-label">Total cells</div><div>${s.totalCells}</div></div>
+        <div class="output-box" style="margin:0"><div class="field-label">Anomalies found</div><div>${s.anomaliesFound}</div></div>
+        <div class="output-box ok-text" style="margin:0"><div class="field-label">Auto-fixed</div><div>${s.fixed}</div></div>
+      </div>
+    `;
+  };
+
+  const renderAnomalies = (result: Awaited<ReturnType<typeof checkNumbers>>) => {
+    if (result.anomalies.length === 0) {
+      anomalyList.textContent = "No anomalies found.";
+      return;
+    }
+    const byType = new Map<string, typeof result.anomalies>();
+    for (const a of result.anomalies) {
+      if (!byType.has(a.type)) byType.set(a.type, []);
+      byType.get(a.type)!.push(a);
+    }
+    let html = "";
+    for (const [type, items] of byType) {
+      html += `<div style="margin:0.5rem 0"><strong>${type.toUpperCase()}</strong> (${items.length})<br>`;
+      for (const a of items.slice(0, 100)) {
+        const fix = a.suggestedFix ? ` → ${a.suggestedFix}` : "";
+        html += `<div style="margin-left:1rem">Row ${a.row + 1}, ${a.colName}: "${a.value}"${fix}</div>`;
+      }
+      if (items.length > 100) html += `<div style="margin-left:1rem;color:var(--muted)">... and ${items.length - 100} more</div>`;
+      html += `</div>`;
+    }
+    anomalyList.innerHTML = html;
+  };
+
+  const doCheck = async () => {
+    if (!file) return;
+    run.disabled = true;
+    out.textContent = "Checking…";
+    try {
+      let data: string | Uint8Array;
+      if (isXlsx) data = await readFileAsArrayBuffer(file);
+      else data = await readFileAsText(file);
+      lastResult = await checkNumbers(data, isXlsx, options());
+      renderStats(lastResult);
+      renderAnomalies(lastResult);
+      out.textContent = `Done: ${lastResult.stats.anomaliesFound} anomalies, ${lastResult.stats.fixed} fixed.`;
+      dlCsv.hidden = dlReport.hidden = false;
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Check failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = !file;
+    }
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  input.addEventListener("change", () => { if (input.files?.[0]) addFile(input.files[0]); input.value = ""; });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("drag"); if (e.dataTransfer?.files?.[0]) addFile(e.dataTransfer.files[0]); });
+
+  run.addEventListener("click", doCheck);
+
+  dlCsv.addEventListener("click", () => {
+    if (lastResult && file) {
+      const csv = lastResult.headers.join(",") + "\n" +
+        lastResult.rows.map(r => r.map(c => c.includes(",") || c.includes('"') || c.includes("\n") ? '"' + c.replace(/"/g, '""') + '"' : c).join(",")).join("\n");
+      downloadText(csv, swapExtension(fileNameOf(file), "csv"), "text/csv");
+    }
+  });
+
+  dlReport.addEventListener("click", () => {
+    if (lastResult && file) downloadText(generateReport(lastResult), swapExtension(fileNameOf(file), "txt"), "text/plain");
+  });
+</script>

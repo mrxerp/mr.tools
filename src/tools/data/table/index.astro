@@ -1,0 +1,120 @@
+---
+// mr.table — Convert JSON arrays to CSV/Excel and back with nested-field flattening.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Input</span>
+    <select class="input" data-direction style="margin-bottom:0.5rem;max-width:200px">
+      <option value="json2csv">JSON → CSV</option>
+      <option value="csv2json">CSV → JSON</option>
+    </select>
+    <textarea class="input" rows="8" placeholder="Paste JSON array or CSV here…" data-input></textarea>
+  </div>
+
+  <div class="actions">
+    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem">
+      <input type="checkbox" checked data-flatten>
+      <span>Flatten nested objects (dot paths)</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;margin-left:1rem">
+      <input type="checkbox" data-header>
+      <span>Include header row</span>
+    </label>
+    <select class="input" data-nulls style="width:auto;max-width:140px;margin-left:1rem">
+      <option value="empty">Nulls → empty</option>
+      <option value="null">Nulls → "null"</option>
+      <option value="skip">Nulls → skip</option>
+    </select>
+    <button class="btn btn-primary" data-convert style="margin-left:auto">Convert</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div class="field" style="margin-top:1rem">
+    <span class="field-label">Output <span data-status class="badge-plain"></span></span>
+    <textarea class="input" rows="10" readonly data-output aria-live="polite"></textarea>
+    <div class="actions" style="margin-top:0.5rem">
+      <button class="btn" data-copy>Copy</button>
+      <button class="btn" data-download>Download</button>
+    </div>
+    <div class="error-text" data-error style="display:none;margin-top:0.5rem"></div>
+    <div data-warnings style="margin-top:0.5rem"></div>
+  </div>
+</section>
+
+<script>
+  import { jsonToCsv, csvToJson, detectDelimiter } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { downloadText } from "@/lib/download";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const output = document.querySelector<HTMLTextAreaElement>("[data-output]")!;
+  const direction = document.querySelector<HTMLSelectElement>("[data-direction]")!;
+  const flattenCheckbox = document.querySelector<HTMLInputElement>("[data-flatten]")!;
+  const headerCheckbox = document.querySelector<HTMLInputElement>("[data-header]")!;
+  const nullsSelect = document.querySelector<HTMLSelectElement>("[data-nulls]")!;
+  const convertBtn = document.querySelector<HTMLButtonElement>("[data-convert]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const status = document.querySelector<HTMLElement>("[data-status]")!;
+  const errorEl = document.querySelector<HTMLElement>("[data-error]")!;
+  const warningsEl = document.querySelector<HTMLElement>("[data-warnings]")!;
+
+  convertBtn.addEventListener("click", () => {
+    errorEl.style.display = "none";
+    warningsEl.innerHTML = "";
+    output.value = "";
+    status.textContent = "";
+    status.className = "badge-plain";
+
+    if (direction.value === "json2csv") {
+      const result = jsonToCsv(input.value, {
+        flatten: flattenCheckbox.checked,
+        handleNulls: nullsSelect.value as "empty" | "null" | "skip",
+        includeHeader: headerCheckbox.checked,
+      });
+      if (result.error) {
+        errorEl.style.display = "block";
+        errorEl.textContent = result.error;
+        return;
+      }
+      output.value = result.csv;
+      status.textContent = `${result.rows.length} rows, ${result.headers.length} columns`;
+      status.className = "badge-ok";
+      if (result.warnings) {
+        for (const w of result.warnings) {
+          const div = document.createElement("div");
+          div.className = "error-text";
+          div.style.fontSize = "0.85rem";
+          div.textContent = `⚠ ${w}`;
+          warningsEl.appendChild(div);
+        }
+      }
+    } else {
+      const result = csvToJson(input.value, { flatten: flattenCheckbox.checked });
+      if (result.error) {
+        errorEl.style.display = "block";
+        errorEl.textContent = result.error;
+        return;
+      }
+      output.value = JSON.stringify(result.data, null, 2);
+      status.textContent = `Converted ${result.data.length} rows`;
+      status.className = "badge-ok";
+    }
+  });
+
+  copyBtn.addEventListener("click", () => copyTextWithFeedback(output.value, copyBtn));
+  downloadBtn.addEventListener("click", () => {
+    const ext = direction.value === "json2csv" ? "csv" : "json";
+    const type = ext === "csv" ? "text/csv" : "application/json";
+    downloadText(output.value, `output.${ext}`, type);
+  });
+  clearBtn.addEventListener("click", () => {
+    input.value = "";
+    output.value = "";
+    status.textContent = "";
+    status.className = "badge-plain";
+    errorEl.style.display = "none";
+    warningsEl.innerHTML = "";
+  });
+</script>

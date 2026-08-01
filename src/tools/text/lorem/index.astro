@@ -1,0 +1,75 @@
+---
+// mr.lorem — seeded lorem ipsum generator with themed styles.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem">
+    <label class="field">
+      <span class="field-label">Style</span>
+      <select class="input" data-style>
+        <option value="classic" selected>Classic</option>
+        <option value="techy">Techy</option>
+        <option value="pirate">Pirate</option>
+        <option value="product">Product</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">Paragraphs</span>
+      <input class="input" type="number" min="1" max="20" value="3" data-paras />
+    </label>
+    <label class="field">
+      <span class="field-label">Sentences per paragraph (0 = random)</span>
+      <input class="input" type="number" min="0" max="20" value="5" data-sents />
+    </label>
+    <label class="field">
+      <span class="field-label">Seed (blank = random)</span>
+      <input class="input" type="number" value="42" data-seed />
+    </label>
+    <label class="field">
+      <span class="field-label">Words (0 = off)</span>
+      <input class="input" type="number" min="0" max="500" value="0" data-words />
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn" type="button" data-copy>Copy</button>
+  </div>
+  <div class="output-box" data-out aria-live="polite"></div>
+</section>
+
+<script>
+  import { loremParagraphs, loremWords, type LoremOptions, type LoremStyle } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const style = document.querySelector<HTMLSelectElement>("[data-style]")!;
+  const paras = document.querySelector<HTMLInputElement>("[data-paras]")!;
+  const sents = document.querySelector<HTMLInputElement>("[data-sents]")!;
+  const seed = document.querySelector<HTMLInputElement>("[data-seed]")!;
+  const words = document.querySelector<HTMLInputElement>("[data-words]")!;
+  const copy = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const out = document.querySelector<HTMLDivElement>("[data-out]")!;
+  if (!style || !paras || !sents || !seed || !words || !copy || !out) {
+    throw new Error("mr lorem mount failed");
+  }
+
+  let current = "";
+
+  function opts(): LoremOptions {
+    return {
+      style: style.value as LoremStyle,
+      paragraphs: Math.max(1, Math.round(Number(paras.value) || 1)),
+      sentencesPerParagraph: Math.max(0, Math.round(Number(sents.value) || 0)),
+      seed: seed.value.trim() === "" ? Math.floor(Math.random() * 1e9) : Math.round(Number(seed.value) || 0),
+    };
+  }
+
+  function render() {
+    const o = opts();
+    const parasText = loremParagraphs(o);
+    const n = Math.max(0, Math.round(Number(words.value) || 0));
+    current = n > 0 ? `${parasText}\n\n${loremWords(n, o)}` : parasText;
+    out.textContent = current;
+  }
+
+  copy.addEventListener("click", () => copyTextWithFeedback(current, copy));
+  for (const el of [style, paras, sents, seed, words]) el.addEventListener("input", render);
+  render();
+</script>

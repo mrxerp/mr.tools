@@ -1,0 +1,40 @@
+---
+// mr.footnote — re-number footnotes, dedupe, convert link styles.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Markdown with footnotes/links</span>
+    <textarea class="input" rows="10" placeholder="Paste markdown with footnotes or links…" data-input></textarea>
+  </label>
+  <div class="actions">
+    <button class="btn btn-primary" data-renumber>Re-number Footnotes</button>
+    <button class="btn" data-inline-to-ref>Inline → Reference Links</button>
+    <button class="btn" data-ref-to-inline>Reference → Inline Links</button>
+    <button class="btn" data-copy>Copy Result</button>
+  </div>
+  <div class="output-box" data-output aria-live="polite"></div>
+  <div data-warnings class="error-text" style="margin-top:0.5rem"></div>
+</section>
+
+<script>
+  import { renumberFootnotes, inlineToReference, referenceToInline } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const output = document.querySelector<HTMLDivElement>("[data-output]")!;
+  const warnings = document.querySelector<HTMLDivElement>("[data-warnings]")!;
+
+  function run(fn: typeof renumberFootnotes) {
+    const result = fn(input.value);
+    output.textContent = result.markdown;
+    warnings.textContent = result.warnings.length ? result.warnings.join("; ") : "";
+  }
+
+  document.querySelector("[data-renumber]")!.addEventListener("click", () => run(renumberFootnotes));
+  document.querySelector("[data-inline-to-ref]")!.addEventListener("click", () => run(inlineToReference));
+  document.querySelector("[data-ref-to-inline]")!.addEventListener("click", () => run(referenceToInline));
+
+  document.querySelector("[data-copy]")!.addEventListener("click", () => {
+    copyTextWithFeedback(output.textContent, document.querySelector("[data-copy]") as HTMLButtonElement);
+  });
+</script>

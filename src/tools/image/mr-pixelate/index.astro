@@ -1,0 +1,155 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button">
+    <input type="file" accept="image/*" data-file hidden />
+    <div class="dz-title">Drop an image or click to browse</div>
+    <div class="dz-hint">PNG, JPEG, or WebP — nothing uploads.</div>
+  </div>
+
+  <div class="grid" data-controls style="display:none;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label class="field">
+      <span class="field-label">Block size: <span data-block-value>12</span>px</span>
+      <input class="input" type="range" min="2" max="64" step="1" value="12" data-block />
+    </label>
+    <label class="field">
+      <span class="field-label">Mosaic grid lines</span>
+      <input type="checkbox" data-mosaic />
+    </label>
+  </div>
+
+  <figure data-preview style="display:none">
+    <figcaption class="field-label" data-label>Preview</figcaption>
+    <img data-out alt="Pixelated image" />
+  </figure>
+
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-download disabled>Download PNG</button>
+  </div>
+  <p class="error-text" data-error style="display:none"></p>
+</section>
+
+<style>
+  figure {
+    margin: 0;
+  }
+  figure img {
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+</style>
+
+<script>
+  import { pixelate } from "./tool.ts";
+  import { loadImageBitmap, imageDataOf, canvasToBlob } from "../_lib.ts";
+  import { swapExtension } from "@/lib/files";
+  import { downloadBlob } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const blockInput = document.querySelector<HTMLInputElement>("[data-block]")!;
+  const blockValue = document.querySelector<HTMLSpanElement>("[data-block-value]")!;
+  const mosaicCheck = document.querySelector<HTMLInputElement>("[data-mosaic]")!;
+  const controls = document.querySelector<HTMLDivElement>("[data-controls]")!;
+  const preview = document.querySelector<HTMLElement>("[data-preview]")!;
+  const outImg = document.querySelector<HTMLImageElement>("[data-out]")!;
+  const label = document.querySelector<HTMLElement>("[data-label]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
+
+  let bitmap: ImageBitmap | null = null;
+  let fileName = "";
+  let width = 0;
+  let height = 0;
+  let currentBlob: Blob | null = null;
+  let outUrl = "";
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d")!;
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) load(file);
+    fileInput.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) load(file);
+  });
+
+  function setError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+
+  async function load(file: File) {
+    setError("");
+    try {
+      const img = await loadImageBitmap(file);
+      bitmap = img.bitmap;
+      fileName = file.name;
+      width = img.width;
+      height = img.height;
+      controls.style.display = "";
+      preview.style.display = "";
+      render();
+    } catch {
+      setError("Could not read that file as an image.");
+    }
+  }
+
+  async function render() {
+    if (!bitmap) return;
+    const block = blockInput.valueAsNumber;
+    blockValue.textContent = String(block);
+
+    const src = imageDataOf(canvas, bitmap).data;
+    const pix = pixelate(src, width, height, block);
+    const data = new ImageData(width, height);
+    data.data.set(pix);
+    ctx.clearRect(0, 0, width, height);
+    ctx.putImageData(data, 0, 0);
+    if (mosaicCheck.checked) {
+      ctx.strokeStyle = "rgba(0,0,0,0.25)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = block; x < width; x += block) {
+        ctx.moveTo(x + 0.5, 0);
+        ctx.lineTo(x + 0.5, height);
+      }
+      for (let y = block; y < height; y += block) {
+        ctx.moveTo(0, y + 0.5);
+        ctx.lineTo(width, y + 0.5);
+      }
+      ctx.stroke();
+    }
+    currentBlob = await canvasToBlob(canvas, "image/png");
+    if (outUrl) URL.revokeObjectURL(outUrl);
+    outUrl = URL.createObjectURL(currentBlob);
+    outImg.src = outUrl;
+    label.textContent = `${width}×${height} — ${block}px blocks${mosaicCheck.checked ? ", mosaic grid" : ""}`;
+    downloadBtn.disabled = false;
+  }
+
+  blockInput.addEventListener("input", render);
+  mosaicCheck.addEventListener("change", render);
+
+  downloadBtn.addEventListener("click", () => {
+    if (!currentBlob) return;
+    downloadBlob(currentBlob, swapExtension(fileName, "png"));
+  });
+</script>

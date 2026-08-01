@@ -1,0 +1,197 @@
+---
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Seed Color</span>
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+      <input class="input" type="color" value="#5a5bd9" data-seed-color style="width:60px;height:40px;border-radius:8px" />
+      <input class="input" type="text" value="#5a5bd9" data-seed-hex placeholder="#5a5bd9" style="flex:1;min-width:120px" />
+      <button class="btn" data-random-seed>Random</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Harmony Type</span>
+    <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="checkbox" value="analogous" checked data-harmony> Analogous</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="checkbox" value="complementary" checked data-harmony> Complementary</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="checkbox" value="triadic" checked data-harmony> Triadic</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="checkbox" value="tetradic" checked data-harmony> Tetradic</label>
+      <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer"><input type="checkbox" value="monochromatic" checked data-harmony> Monochromatic</label>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-generate>Generate Palette</button>
+    <button class="btn" data-shuffle>Shuffle</button>
+    <button class="btn" data-lock>Lock Colors</button>
+  </div>
+
+  <div class="section-title">Your Palette</div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:0.5rem" data-palette></div>
+
+  <div class="section-title">Exports</div>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
+    <button class="btn" data-export-css>CSS Variables</button>
+    <button class="btn" data-export-scss>SCSS Map</button>
+    <button class="btn" data-export-tailwind>Tailwind Config</button>
+    <button class="btn" data-export-png>Download PNG</button>
+  </div>
+  <output class="output-box" data-output aria-live="polite"></output>
+</section>
+
+<script>
+  import {
+    generateColorPalette,
+    generateCSSVariables,
+    generateSCSSMap,
+    generateTailwindConfig,
+    shuffleColors,
+    lockColors,
+    randomColor,
+    type Color,
+    type Palette,
+  } from "./tool.ts";
+import { copyTextWithFeedback } from "@/lib/clipboard";
+import { downloadText, downloadBlob } from "@/lib/download";
+
+  const seedColor = document.querySelector<HTMLInputElement>("[data-seed-color]")!;
+  const seedHex = document.querySelector<HTMLInputElement>("[data-seed-hex]")!;
+  const harmonyInputs = document.querySelectorAll<HTMLInputElement>("[data-harmony]");
+  const paletteGrid = document.querySelector<HTMLDivElement>("[data-palette]")!;
+  const output = document.querySelector<HTMLOutputElement>("[data-output]")!;
+  let currentPalette: Palette | null = null;
+  let locked = false;
+
+  function normalizeHex(hex: string): string {
+    let h = hex.trim();
+    if (!h.startsWith("#")) h = "#" + h;
+    if (h.length === 4) h = "#" + h[1].repeat(2) + h[2].repeat(2) + h[3].repeat(2);
+    return h.toLowerCase();
+  }
+
+  function getHarmonyOptions() {
+    const opts: Record<string, boolean> = {};
+    harmonyInputs.forEach(input => { opts[input.value] = input.checked; });
+    return opts;
+  }
+
+  function generate() {
+    const seed = normalizeHex(seedHex.value);
+    const opts = getHarmonyOptions();
+    currentPalette = generateColorPalette(seed, { ...opts, locked, shuffle: false });
+    renderPalette(currentPalette);
+    output.textContent = "";
+  }
+
+  function renderPalette(palette: Palette) {
+    paletteGrid.innerHTML = "";
+    const colors = [...palette.harmonious.analogous, ...palette.harmonious.complementary, ...palette.harmonious.triadic, ...palette.harmonious.tetradic, ...palette.monochromatic];
+    const allColors = [palette.base, ...colors];
+
+    allColors.forEach((color, i) => {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.style.padding = "0.5rem";
+      card.style.minHeight = "80px";
+      card.innerHTML = `
+        <div style="width:100%;height:40px;border-radius:8px;background:${color.hex};border:1px solid var(--border);margin-bottom:0.5rem"></div>
+        <div class="mono" style="font-size:0.75rem;word-break:break-all">${color.hex}</div>
+      `;
+      card.addEventListener("click", () => copyTextWithFeedback(color.hex, card.querySelector(".mono")!));
+      paletteGrid.appendChild(card);
+    });
+  }
+
+  function shuffle() {
+    if (!currentPalette) return;
+    currentPalette = {
+      ...currentPalette,
+      shuffled: shuffleColors(currentPalette.shuffled),
+      locked: false,
+    };
+    locked = false;
+    renderPalette(currentPalette);
+  }
+
+  function toggleLock() {
+    if (!currentPalette) return;
+    locked = !locked;
+    currentPalette = {
+      ...currentPalette,
+      shuffled: lockColors(currentPalette.shuffled),
+      locked,
+    };
+    renderPalette(currentPalette);
+  }
+
+  function exportFormat(format: "css" | "scss" | "tailwind") {
+    if (!currentPalette) return;
+    let result = "";
+    if (format === "css") result = generateCSSVariables(currentPalette);
+    else if (format === "scss") result = generateSCSSMap(currentPalette);
+    else result = generateTailwindConfig(currentPalette);
+    output.textContent = result;
+    copyTextWithFeedback(result, output);
+  }
+
+  async function exportPNG() {
+    if (!currentPalette) return;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    const colors = [...currentPalette.harmonious.analogous, ...currentPalette.harmonious.complementary, ...currentPalette.harmonious.triadic, ...currentPalette.harmonious.tetradic, ...currentPalette.monochromatic];
+    const allColors = [currentPalette.base, ...colors];
+    const swatchSize = 80;
+    const cols = 5;
+    const rows = Math.ceil(allColors.length / cols);
+    canvas.width = cols * swatchSize;
+    canvas.height = rows * swatchSize;
+    allColors.forEach((color, i) => {
+      const x = (i % cols) * swatchSize;
+      const y = Math.floor(i / cols) * swatchSize;
+      ctx.fillStyle = color.hex;
+      ctx.fillRect(x, y, swatchSize, swatchSize);
+      ctx.fillStyle = contrastRatio(color.hex, "#ffffff") > 3 ? "#000" : "#fff";
+      ctx.font = "12px monospace";
+      ctx.fillText(color.hex, x + 5, y + 20);
+    });
+    canvas.toBlob((blob) => {
+      if (blob) downloadBlob(blob, "palette.png");
+    });
+  }
+
+  function contrastRatio(fg: string, bg: string): number {
+    const parseHex = (hex: string) => {
+      const clean = hex.replace(/^#/, "");
+      if (clean.length === 3) return [parseInt(clean[0]+clean[0],16), parseInt(clean[1]+clean[1],16), parseInt(clean[2]+clean[2],16)];
+      return [parseInt(clean.slice(0,2),16), parseInt(clean.slice(2,4),16), parseInt(clean.slice(4,6),16)];
+    };
+    const luminance = (r: number, g: number, b: number) => {
+      const toLinear = (c: number) => { const s = c/255; return s <= 0.04045 ? s/12.92 : Math.pow((s+0.055)/1.055, 2.4); };
+      return 0.2126*toLinear(r)+0.7152*toLinear(g)+0.0722*toLinear(b);
+    };
+    const [fr, fgR, fb] = parseHex(fg);
+    const [br, bgR, bb] = parseHex(bg);
+    const l1 = luminance(fr, fgR, fb);
+    const l2 = luminance(br, bgR, bb);
+    return (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05);
+  }
+
+  seedHex.addEventListener("input", () => { seedColor.value = normalizeHex(seedHex.value); });
+  seedColor.addEventListener("input", () => { seedHex.value = seedColor.value; });
+  document.querySelector("[data-generate]")!.addEventListener("click", generate);
+  document.querySelector("[data-shuffle]")!.addEventListener("click", shuffle);
+  document.querySelector("[data-lock]")!.addEventListener("click", toggleLock);
+  document.querySelector("[data-random-seed]")!.addEventListener("click", () => {
+    const c = randomColor();
+    seedColor.value = c.hex;
+    seedHex.value = c.hex;
+    generate();
+  });
+  document.querySelector("[data-export-css]")!.addEventListener("click", () => exportFormat("css"));
+  document.querySelector("[data-export-scss]")!.addEventListener("click", () => exportFormat("scss"));
+  document.querySelector("[data-export-tailwind]")!.addEventListener("click", () => exportFormat("tailwind"));
+  document.querySelector("[data-export-png]")!.addEventListener("click", exportPNG);
+
+  generate();
+</script>

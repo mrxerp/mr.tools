@@ -1,0 +1,220 @@
+---
+// mr.shift — timesheet: hours + pay per day, exported to CSV.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Hourly rate</span>
+    <input class="input" type="number" min="0" step="0.5" placeholder="20.00" data-rate style="max-width:12rem" />
+  </div>
+  <div class="shift-rows" data-rows></div>
+  <div class="actions">
+    <button class="btn" type="button" data-add>Add day</button>
+    <button class="btn" type="button" data-clear>Clear</button>
+    <button class="btn btn-primary" type="button" data-export>Export CSV</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<style>
+  .shift-row {
+    display: grid;
+    grid-template-columns: 1fr 5.5rem 5.5rem 5.5rem 2rem;
+    gap: 0.5rem;
+    align-items: center;
+    margin-block: 0.5rem;
+  }
+  .shift-row .input {
+    padding: 0.45rem 0.6rem;
+  }
+  .shift-del {
+    border: none;
+    background: none;
+    color: var(--danger);
+    font-size: 1.1rem;
+    cursor: pointer;
+  }
+  .shift-sum {
+    font-size: 0.8rem;
+    color: var(--muted);
+    grid-column: 1 / -1;
+    margin-top: 0.1rem;
+  }
+</style>
+
+<script>
+  import { computeShift, toCsv, type ShiftEntry } from "./tool.ts";
+
+  const rateEl = document.querySelector<HTMLInputElement>("[data-rate]")!;
+  const rowsEl = document.querySelector<HTMLDivElement>("[data-rows]")!;
+  const addBtn = document.querySelector<HTMLButtonElement>("[data-add]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const exportBtn = document.querySelector<HTMLButtonElement>("[data-export]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
+  if (!rateEl || !rowsEl || !addBtn || !clearBtn || !exportBtn || !out) throw new Error("mr.shift mount failed");
+
+  const STORAGE_KEY = "mr-shift-entries-v1";
+
+  function loadEntries(): ShiftEntry[] {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+      if (!Array.isArray(raw)) return [];
+      return raw.filter(
+        (e) =>
+          e && typeof e.date === "string" &&
+          typeof e.in === "string" &&
+          typeof e.out === "string" &&
+          typeof e.breakMinutes === "number",
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  function saveEntries() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(readEntries()));
+  }
+
+  function readEntries(): ShiftEntry[] {
+    const outArr: ShiftEntry[] = [];
+    for (const row of rowsEl.querySelectorAll<HTMLElement>("[data-row]")) {
+      const date = row.querySelector<HTMLInputElement>("[data-date]");
+      const inEl = row.querySelector<HTMLInputElement>("[data-in]");
+      const outEl = row.querySelector<HTMLInputElement>("[data-out]");
+      const brk = row.querySelector<HTMLInputElement>("[data-brk]");
+      if (!date || !inEl || !outEl || !brk) continue;
+      outArr.push({
+        date: date.value,
+        in: inEl.value,
+        out: outEl.value,
+        breakMinutes: Number(brk.value) || 0,
+      });
+    }
+    return outArr;
+  }
+
+  function addRow(entry: Partial<ShiftEntry> = {}) {
+    const row = document.createElement("div");
+    row.className = "shift-row";
+    row.dataset.row = "";
+    const date = document.createElement("input");
+    date.className = "input";
+    date.type = "date";
+    date.dataset.date = "";
+    date.value = entry.date ?? new Date().toISOString().slice(0, 10);
+    const inEl = document.createElement("input");
+    inEl.className = "input";
+    inEl.type = "time";
+    inEl.dataset.in = "";
+    inEl.value = entry.in ?? "09:00";
+    const outEl = document.createElement("input");
+    outEl.className = "input";
+    outEl.type = "time";
+    outEl.dataset.out = "";
+    outEl.value = entry.out ?? "17:00";
+    const brk = document.createElement("input");
+    brk.className = "input";
+    brk.type = "number";
+    brk.min = "0";
+    brk.placeholder = "break";
+    brk.title = "Break (minutes)";
+    brk.dataset.brk = "";
+    brk.value = String(entry.breakMinutes ?? 60);
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "shift-del";
+    del.textContent = "×";
+    del.title = "Remove day";
+    del.addEventListener("click", () => {
+      row.remove();
+      saveEntries();
+      render();
+    });
+    const sum = document.createElement("div");
+    sum.className = "shift-sum";
+    sum.dataset.sum = "";
+    row.append(date, inEl, outEl, brk, del, sum);
+    for (const el of [date, inEl, outEl, brk]) el.addEventListener("input", () => {
+      saveEntries();
+      render();
+    });
+    rowsEl.appendChild(row);
+    return { row, sum };
+  }
+
+  function render() {
+    let totalMinutes = 0;
+    let totalPay = 0;
+    let dayCount = 0;
+    for (const row of rowsEl.querySelectorAll<HTMLElement>("[data-row]")) {
+      const date = row.querySelector<HTMLInputElement>("[data-date]");
+      const inEl = row.querySelector<HTMLInputElement>("[data-in]");
+      const outEl = row.querySelector<HTMLInputElement>("[data-out]");
+      const brk = row.querySelector<HTMLInputElement>("[data-brk]");
+      const sum = row.querySelector<HTMLDivElement>("[data-sum]");
+      if (!date || !inEl || !outEl || !brk || !sum) continue;
+      if (!inEl.value || !outEl.value) {
+        sum.textContent = "";
+        continue;
+      }
+      const t = computeShift(
+        { date: date.value, in: inEl.value, out: outEl.value, breakMinutes: Number(brk.value) || 0 },
+        rate(),
+      );
+      totalMinutes += t.minutes;
+      totalPay += t.pay;
+      dayCount++;
+      const overnight = t.overnight ? " (overnight)" : "";
+      sum.textContent = `${(t.minutes / 60).toFixed(2)} h${overnight}${rate() ? ` · $${t.pay.toFixed(2)}` : ""}`;
+    }
+    out.innerHTML = "";
+    if (!dayCount) {
+      out.textContent = "Add a day to start building your timesheet.";
+      return;
+    }
+    const el = document.createElement("div");
+    const rateText = rate() ? ` at $${rate().toFixed(2)}/h` : "";
+    el.textContent =
+      `${dayCount} day${dayCount === 1 ? "" : "s"} · ` +
+      `${(totalMinutes / 60).toFixed(2)} hours total${rateText} · ` +
+      `pay $${totalPay.toFixed(2)}`;
+    out.appendChild(el);
+  }
+
+  function rate(): number {
+    return Math.max(0, Number(rateEl.value) || 0);
+  }
+
+  rateEl.addEventListener("input", render);
+
+  addBtn.addEventListener("click", () => {
+    addRow();
+    saveEntries();
+    render();
+  });
+
+  clearBtn.addEventListener("click", () => {
+    rowsEl.innerHTML = "";
+    localStorage.removeItem(STORAGE_KEY);
+    render();
+  });
+
+  exportBtn.addEventListener("click", () => {
+    const csv = toCsv(readEntries(), rate());
+    if (!csv.includes("\n,") && readEntries().length === 0) return;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "mr-shift.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  const saved = loadEntries();
+  if (saved.length) {
+    for (const e of saved) addRow(e);
+  } else {
+    addRow();
+    addRow();
+  }
+  render();
+</script>

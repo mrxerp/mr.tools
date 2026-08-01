@@ -1,0 +1,104 @@
+---
+// mr.invisi — reveal invisible and zero-width characters in pasted text.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Text</span>
+    <textarea class="input" rows="8" placeholder="Paste text that has invisible characters…" data-input></textarea>
+  </label>
+  <div class="actions">
+    <button class="btn" type="button" data-clean>Copy clean text</button>
+  </div>
+  <div class="muted" data-count style="font-size:0.85rem;margin-block:0.6rem"></div>
+  <div class="output-box" data-map aria-live="polite"></div>
+  <div class="output-box" data-list aria-live="polite"></div>
+</section>
+
+<style>
+  .char-cell {
+    display: inline-block;
+    white-space: pre;
+  }
+  .char-space,
+  .char-other-space {
+    color: var(--accent);
+  }
+  .char-tab,
+  .char-newline,
+  .char-cr,
+  .char-nbsp,
+  .char-zero-width,
+  .char-bom,
+  .char-control {
+    background: rgba(194, 67, 58, 0.14);
+    color: var(--danger);
+    border-radius: 3px;
+  }
+  .inv-row {
+    padding-block: 0.2rem;
+    border-bottom: 1px dashed var(--border);
+  }
+  .inv-row:last-child {
+    border-bottom: 0;
+  }
+  .inv-code {
+    font-weight: 700;
+    color: var(--danger);
+  }
+</style>
+
+<script>
+  import { charMap, cleanText, detectInvisible } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const clean = document.querySelector<HTMLButtonElement>("[data-clean]")!;
+  const count = document.querySelector<HTMLDivElement>("[data-count]")!;
+  const map = document.querySelector<HTMLDivElement>("[data-map]")!;
+  const list = document.querySelector<HTMLDivElement>("[data-list]")!;
+  if (!input || !clean || !count || !map || !list) throw new Error("mr invisi mount failed");
+
+  const GLYPHS: Record<string, string> = {
+    space: "·",
+    tab: "→",
+    newline: "⏎",
+    cr: "␍",
+    nbsp: "␣",
+    "zero-width": "∅",
+    bom: "␦",
+    control: "□",
+    "other-space": "·",
+  };
+
+  function render() {
+    const text = input.value;
+    const cells = charMap(text);
+    map.innerHTML = "";
+    for (const cell of cells) {
+      const span = document.createElement("span");
+      span.className = `char-cell char-${cell.kind}`;
+      span.textContent = cell.kind === "visible" ? cell.char : GLYPHS[cell.kind] ?? cell.char;
+      map.appendChild(span);
+    }
+    const found = detectInvisible(text);
+    count.textContent = found.length
+      ? `${found.length} invisible character(s) found`
+      : "No invisible characters found.";
+    list.innerHTML = "";
+    for (const f of found) {
+      const row = document.createElement("div");
+      row.className = "inv-row";
+      const code = document.createElement("span");
+      code.className = "inv-code";
+      code.textContent = f.code;
+      const name = document.createElement("span");
+      name.textContent = ` at index ${f.index} — ${f.name}`;
+      row.append(code, name);
+      list.appendChild(row);
+    }
+  }
+
+  clean.addEventListener("click", () => copyTextWithFeedback(cleanText(input.value), clean));
+  input.addEventListener("input", render);
+  render();
+</script>

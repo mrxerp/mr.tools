@@ -1,0 +1,110 @@
+---
+// mr.regex — live regex test, flags, matches, groups, replace preview.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:1rem">
+    <label class="field">
+      <span class="field-label">Pattern</span>
+      <input class="input" type="text" placeholder="\w+" data-pattern />
+    </label>
+    <label class="field">
+      <span class="field-label">Flags</span>
+      <input class="input" type="text" placeholder="gi" data-flags value="g" />
+    </label>
+  </div>
+  <label class="field">
+    <span class="field-label">Test text</span>
+    <textarea class="input" rows="6" placeholder="Paste text to search…" data-text></textarea>
+  </label>
+  <label class="field">
+    <span class="field-label">Replacement (for the replace preview)</span>
+    <input class="input" type="text" placeholder="$1 or any text" data-replace />
+  </label>
+  <div class="error-text" data-error style="font-size:0.85rem;min-height:1.2em"></div>
+  <div class="output-box" data-out aria-live="polite"></div>
+</section>
+
+<style>
+  .match-row {
+    padding-block: 0.25rem;
+    border-bottom: 1px dashed var(--border);
+  }
+  .match-row:last-child {
+    border-bottom: 0;
+  }
+  .match-index {
+    color: var(--faint);
+  }
+</style>
+
+<script>
+  import { replacePreview, runRegex } from "./tool.ts";
+
+  const pattern = document.querySelector<HTMLInputElement>("[data-pattern]")!;
+  const flags = document.querySelector<HTMLInputElement>("[data-flags]")!;
+  const text = document.querySelector<HTMLTextAreaElement>("[data-text]")!;
+  const replace = document.querySelector<HTMLInputElement>("[data-replace]")!;
+  const error = document.querySelector<HTMLDivElement>("[data-error]")!;
+  const out = document.querySelector<HTMLDivElement>("[data-out]")!;
+  if (!pattern || !flags || !text || !replace || !error || !out) {
+    throw new Error("mr regex mount failed");
+  }
+
+  function render() {
+    const res = runRegex(pattern.value, flags.value, text.value);
+    error.textContent = "";
+    out.innerHTML = "";
+    if (!res.ok) {
+      error.textContent = "Invalid pattern: " + res.error;
+      return;
+    }
+    const head = document.createElement("div");
+    head.textContent =
+      `${res.count} match(es)` +
+      (res.groupNames.length ? ` · capture groups: ${res.groupNames.join(", ")}` : "");
+    head.className = "field-label";
+    out.appendChild(head);
+    if (res.count === 0) {
+      const none = document.createElement("div");
+      none.textContent = "No matches.";
+      out.appendChild(none);
+    }
+    for (const m of res.matches) {
+      const row = document.createElement("div");
+      row.className = "match-row";
+      const idx = document.createElement("span");
+      idx.className = "match-index";
+      idx.textContent = `#${m.index}: `;
+      row.appendChild(idx);
+      row.appendChild(document.createTextNode(m.text));
+      if (m.groups.length) {
+        const g = document.createElement("span");
+        g.className = "match-index";
+        g.textContent = `  → groups [${m.groups.map((x) => x ?? "").join(" | ")}]`;
+        row.appendChild(g);
+      }
+      out.appendChild(row);
+    }
+    if (res.count >= 1000) {
+      const more = document.createElement("div");
+      more.textContent = "… match list truncated at 1000.";
+      out.appendChild(more);
+    }
+    if (replace.value !== "") {
+      const rep = replacePreview(pattern.value, flags.value, text.value, replace.value);
+      const box = document.createElement("div");
+      box.className = "output-box";
+      box.style.borderStyle = "solid";
+      const lbl = document.createElement("div");
+      lbl.className = "field-label";
+      lbl.textContent = `Replace preview (${rep.count} replacement(s))`;
+      const body = document.createElement("div");
+      body.textContent = rep.ok ? rep.result : rep.error;
+      box.append(lbl, body);
+      out.appendChild(box);
+    }
+  }
+
+  for (const el of [pattern, flags, text, replace]) el.addEventListener("input", render);
+  render();
+</script>

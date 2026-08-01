@@ -1,0 +1,110 @@
+---
+// mr.compare — Side-by-side JSON/XML/YAML comparison with structural and literal diff modes.
+---
+<section class="stage">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+    <div class="field">
+      <span class="field-label">Left Input</span>
+      <select class="input" data-left-format style="margin-bottom:0.5rem;max-width:140px">
+        <option value="json">JSON</option>
+        <option value="yaml">YAML</option>
+        <option value="xml">XML</option>
+      </select>
+      <textarea class="input" rows="10" placeholder="Paste left side…" data-left-input></textarea>
+    </div>
+    <div class="field">
+      <span class="field-label">Right Input</span>
+      <select class="input" data-right-format style="margin-bottom:0.5rem;max-width:140px">
+        <option value="json">JSON</option>
+        <option value="yaml">YAML</option>
+        <option value="xml">XML</option>
+      </select>
+      <textarea class="input" rows="10" placeholder="Paste right side…" data-right-input></textarea>
+    </div>
+  </div>
+
+  <div class="actions" style="margin-top:0.5rem">
+    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem">
+      <input type="radio" name="mode" value="structural" checked data-mode>
+      <span>Structural (key-order-insensitive)</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;margin-left:1rem">
+      <input type="radio" name="mode" value="literal" data-mode>
+      <span>Literal (exact match)</span>
+    </label>
+    <button class="btn btn-primary" data-compare style="margin-left:auto">Compare</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div class="field" style="margin-top:1rem">
+    <span class="field-label">Diff Result <span data-summary class="badge-plain"></span></span>
+    <div class="output-box" data-output style="min-height:200px;max-height:500px;overflow:auto;font-family:var(--mono);font-size:0.85rem;white-space:pre-wrap"></div>
+    <div class="error-text" data-error style="display:none;margin-top:0.5rem"></div>
+  </div>
+</section>
+
+<script>
+  import {
+    parseInput,
+    diff,
+    formatDiffResult,
+    type DiffMode,
+    type InputFormat,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const leftInput = document.querySelector<HTMLTextAreaElement>("[data-left-input]")!;
+  const rightInput = document.querySelector<HTMLTextAreaElement>("[data-right-input]")!;
+  const leftFormat = document.querySelector<HTMLSelectElement>("[data-left-format]")!;
+  const rightFormat = document.querySelector<HTMLSelectElement>("[data-right-format]")!;
+  const compareBtn = document.querySelector<HTMLButtonElement>("[data-compare]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const output = document.querySelector<HTMLDivElement>("[data-output]")!;
+  const summary = document.querySelector<HTMLElement>("[data-summary]")!;
+  const errorEl = document.querySelector<HTMLElement>("[data-error]")!;
+  const modeRadios = document.querySelectorAll<HTMLInputElement>("[data-mode]");
+
+  function getMode(): DiffMode {
+    return Array.from(modeRadios).find((r) => r.checked)?.value as DiffMode ?? "structural";
+  }
+
+  compareBtn.addEventListener("click", () => {
+    errorEl.style.display = "none";
+    output.textContent = "";
+
+    const leftResult = parseInput(leftInput.value, leftFormat.value as InputFormat);
+    const rightResult = parseInput(rightInput.value, rightFormat.value as InputFormat);
+
+    if (leftResult.error) {
+      errorEl.style.display = "block";
+      errorEl.textContent = `Left: ${leftResult.error}`;
+      return;
+    }
+    if (rightResult.error) {
+      errorEl.style.display = "block";
+      errorEl.textContent = `Right: ${rightResult.error}`;
+      return;
+    }
+
+    const result = diff(leftResult.data, rightResult.data, getMode());
+
+    if (result.same) {
+      summary.textContent = "Identical";
+      summary.className = "badge-ok";
+    } else {
+      summary.textContent = `${result.differences.length} differences`;
+      summary.className = "badge";
+    }
+
+    output.textContent = formatDiffResult(result);
+  });
+
+  clearBtn.addEventListener("click", () => {
+    leftInput.value = "";
+    rightInput.value = "";
+    output.textContent = "";
+    summary.textContent = "";
+    summary.className = "badge-plain";
+    errorEl.style.display = "none";
+  });
+</script>

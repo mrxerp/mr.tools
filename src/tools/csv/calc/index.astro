@@ -1,0 +1,199 @@
+---
+---
+<section class="stage">
+  <h2>mr.calc</h2>
+  <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem">Apply formulas to whole columns: sum, avg, pct-change, increment, string ops — with live preview.</p>
+
+  <div class="field">
+    <span class="field-label">CSV Data</span>
+    <textarea class="input" rows="8" placeholder="Paste CSV data or drop file…" data-input></textarea>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Or drop CSV file</span>
+    <div class="drop-zone" data-zone>
+      <input type="file" class="input" style="display:none" accept=".csv,.tsv" data-file />
+      <div class="dz-title">Drop CSV file or click to browse</div>
+      <div class="dz-hint">CSV, TSV — auto-detects delimiter</div>
+    </div>
+  </div>
+
+  <div class="field" data-options style="display:none">
+    <span class="field-label">Operation</span>
+    <select class="input" data-op>
+      <option value="add">Add (sum)</option>
+      <option value="avg">Average</option>
+      <option value="concat">Concatenate</option>
+      <option value="replace">Find & Replace</option>
+      <option value="uppercase">Uppercase</option>
+      <option value="lowercase">Lowercase</option>
+    </select>
+  </div>
+
+  <div class="field" data-options style="display:none">
+    <span class="field-label">Source Column(s)</span>
+    <select class="input" multiple data-source-cols></select>
+  </div>
+
+  <div class="field" data-options style="display:none">
+    <span class="field-label">Target Column</span>
+    <input class="input" placeholder="New column name" data-target-col />
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-apply style="display:none">Apply Formula</button>
+    <button class="btn" data-download style="display:none">Download CSV</button>
+  </div>
+
+  <div class="output-box" data-preview style="display:none;max-height:200px;overflow:auto"></div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { calculate, parseCSV, stringifyCSV, generatePreviewCsv } from "./tool.ts";
+  import { downloadText } from "@/lib/download";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const zone = document.querySelector<HTMLElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const optionsDiv = document.querySelectorAll<HTMLElement>("[data-options]");
+  const opSel = document.querySelector<HTMLSelectElement>("[data-op]")!;
+  const sourceSel = document.querySelector<HTMLSelectElement>("[data-source-cols]")!;
+  const targetInput = document.querySelector<HTMLInputElement>("[data-target-col]")!;
+  const applyBtn = document.querySelector<HTMLButtonElement>("[data-apply]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const previewBox = document.querySelector<HTMLElement>("[data-preview]")!;
+  const outBox = document.querySelector<HTMLElement>("[data-out]")!;
+
+  let headers: string[] = [];
+  let rows: string[][] = [];
+  let result: any = null;
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer?.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files?.[0]) handleFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  async function handleFile(file: File) {
+    const text = await file.text();
+    input.value = text;
+    parseInput();
+  }
+
+  input.addEventListener("input", () => parseInput());
+
+  function parseInput() {
+    const text = input.value.trim();
+    if (!text) return;
+
+    try {
+      const data = parseCSV(text);
+      headers = data[0] || [];
+      rows = data.slice(1);
+
+      sourceSel.innerHTML = headers.map(h => `<option value="${h}">${h}</option>`).join("");
+
+      optionsDiv.forEach(d => d.style.display = "");
+      applyBtn.style.display = "";
+      downloadBtn.style.display = "none";
+      previewBox.style.display = "none";
+
+      outBox.textContent = `Parsed ${rows.length} rows, ${headers.length} columns`;
+      outBox.className = "output-box ok-text";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  }
+
+  applyBtn.addEventListener("click", () => {
+    if (!rows.length) return;
+    applyBtn.disabled = true;
+    applyBtn.textContent = "Applying...";
+
+    try {
+      const sourceCols = Array.from(sourceSel.selectedOptions).map(o => o.value);
+      const targetCol = targetInput.value.trim() || `calc_${Date.now()}`;
+
+      if (!sourceCols.length) {
+        outBox.textContent = "Select at least one source column";
+        outBox.className = "output-box error-text";
+        return;
+      }
+
+      const steps = [{ id: "1", op: opSel.value as any, targetColumn: targetCol, sourceColumns: sourceCols, params: {}, enabled: true }];
+
+      result = calculate(input.value, { steps, newColumnName: targetCol });
+
+      previewBox.style.display = "block";
+      previewBox.innerHTML = "";
+
+      const table = document.createElement("table");
+      table.style.width = "100%";
+      table.style.borderCollapse = "collapse";
+      table.style.fontSize = "0.8rem";
+
+      const headerRow = document.createElement("tr");
+      [...result.headers].forEach(h => {
+        const th = document.createElement("th");
+        th.style.border = "1px solid var(--border)";
+        th.style.padding = "0.3rem";
+        th.textContent = h;
+        headerRow.appendChild(th);
+      });
+      table.appendChild(headerRow);
+
+      result.rows.slice(0, 10).forEach((row: string[]) => {
+        const tr = document.createElement("tr");
+        row.forEach((cell: string) => {
+          const td = document.createElement("td");
+          td.style.border = "1px solid var(--border)";
+          td.style.padding = "0.3rem";
+          td.textContent = cell;
+          tr.appendChild(td);
+        });
+        table.appendChild(tr);
+      });
+
+      previewBox.appendChild(table);
+
+      if (result.rows.length > 10) {
+        const note = document.createElement("div");
+        note.style.fontSize = "0.8rem";
+        note.style.color = "var(--muted)";
+        note.style.marginTop = "0.5rem";
+        note.textContent = `Showing 10 of ${result.rows.length} rows`;
+        previewBox.appendChild(note);
+      }
+
+      downloadBtn.style.display = "";
+      outBox.textContent = `Formula applied. ${result.stats.computedRows} rows computed, ${result.stats.errors} errors.`;
+      outBox.className = "output-box ok-text";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    } finally {
+      applyBtn.disabled = false;
+      applyBtn.textContent = "Apply Formula";
+    }
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    if (!result) return;
+    downloadText(generatePreviewCsv(result), "calculated.csv", "text/csv");
+  });
+</script>
+
+<style>
+  .drop-zone.drag { border-color: var(--accent); background: var(--accent-soft); }
+  table { font-family: var(--mono); }
+</style>

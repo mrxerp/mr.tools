@@ -1,0 +1,159 @@
+---
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Foreground Color</span>
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+      <input class="input" type="color" value="#1b1a17" data-fg-color style="width:60px;height:40px;border-radius:8px" />
+      <input class="input" type="text" value="#1b1a17" data-fg-hex placeholder="#1b1a17" style="flex:1;min-width:120px" />
+    </div>
+  </div>
+  <div class="field">
+    <span class="field-label">Background Color</span>
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+      <input class="input" type="color" value="#fafaf8" data-bg-color style="width:60px;height:40px;border-radius:8px" />
+      <input class="input" type="text" value="#fafaf8" data-bg-hex placeholder="#fafaf8" style="flex:1;min-width:120px" />
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-swap>Swap Colors</button>
+  </div>
+
+  <div style="margin-top:1.5rem;padding:1.5rem;background:var(--bg);border-radius:var(--radius);border:1px solid var(--border)" data-preview>
+    <div style="font-weight:600;margin-bottom:0.5rem">Live Preview</div>
+    <div style="padding:2rem;border-radius:8px;font-size:1.25rem;transition:all 0.2s" data-preview-box>
+      The quick brown fox jumps over the lazy dog. 1234567890
+    </div>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:1rem;font-size:0.9rem" data-preview-info></div>
+  </div>
+
+  <div class="section-title">WCAG Results</div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))" data-results></div>
+
+  <div class="section-title">Fix Suggestions</div>
+  <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:0.9rem" data-fixes>
+      <thead>
+        <tr style="text-align:left;border-bottom:2px solid var(--border)">
+          <th style="padding:0.5rem">Target</th>
+          <th style="padding:0.5rem">Adjusted FG</th>
+          <th style="padding:0.5rem">Ratio</th>
+          <th style="padding:0.5rem">Meets</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+<style>
+  .result-card { padding:1rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface) }
+  .result-card.pass { border-color:var(--ok);background:color-mix(in srgb,var(--ok) 8%,transparent) }
+  .result-card.fail { border-color:var(--danger);background:color-mix(in srgb,var(--danger) 8%,transparent) }
+  .result-title { font-weight:600;margin-bottom:0.5rem }
+  .result-ratio { font-size:1.5rem;font-weight:700;font-family:var(--mono) }
+  .result-badges { display:flex;gap:0.35rem;flex-wrap:wrap;margin-top:0.5rem }
+  .badge-sm { font-size:0.7rem;padding:0.15rem 0.5rem;border-radius:999px;font-weight:600 }
+  .badge-aa { color:var(--ok);background:color-mix(in srgb,var(--ok) 15%,transparent) }
+  .badge-aaa { color:#1a7a3d;background:color-mix(in srgb,#1a7a3d 15%,transparent) }
+  .badge-ui { color:var(--accent);background:var(--accent-soft) }
+  .badge-fail { color:var(--danger);background:color-mix(in srgb,var(--danger) 15%,transparent) }
+</style>
+
+<script>
+  import { contrastRatio, checkContrast, suggestFixes, hexToRgb } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const fgColor = document.querySelector<HTMLInputElement>("[data-fg-color]")!;
+  const fgHex = document.querySelector<HTMLInputElement>("[data-fg-hex]")!;
+  const bgColor = document.querySelector<HTMLInputElement>("[data-bg-color]")!;
+  const bgHex = document.querySelector<HTMLInputElement>("[data-bg-hex]")!;
+  const previewBox = document.querySelector<HTMLDivElement>("[data-preview-box]")!;
+  const previewInfo = document.querySelector<HTMLDivElement>("[data-preview-info]")!;
+  const results = document.querySelector<HTMLDivElement>("[data-results]")!;
+  const fixesBody = document.querySelector<HTMLTableSectionElement>("[data-fixes] tbody")!;
+  const swapBtn = document.querySelector<HTMLButtonElement>("[data-swap]")!;
+
+  function normalizeHex(hex: string): string {
+    let h = hex.trim();
+    if (!h.startsWith("#")) h = "#" + h;
+    if (h.length === 4) {
+      h = "#" + h[1].repeat(2) + h[2].repeat(2) + h[3].repeat(2);
+    }
+    return h.toLowerCase();
+  }
+
+  function syncInputs() {
+    fgColor.value = normalizeHex(fgHex.value);
+    bgColor.value = normalizeHex(bgHex.value);
+    fgHex.value = normalizeHex(fgHex.value);
+    bgHex.value = normalizeHex(bgHex.value);
+  }
+
+  function update() {
+    syncInputs();
+    const fg = normalizeHex(fgHex.value);
+    const bg = normalizeHex(bgHex.value);
+
+    previewBox.style.color = fg;
+    previewBox.style.background = bg;
+    previewBox.style.border = `2px solid ${fg}`;
+
+    const ratio = contrastRatio(fg, bg);
+    const check = checkContrast(fg, bg);
+
+    previewInfo.innerHTML = `
+      <span class="badge ${check.level === "fail" ? "badge-plain" : check.level === "aaa" ? "badge-ok" : "badge"}">${check.level.toUpperCase()}</span>
+      <span class="mono">Ratio: ${ratio.toFixed(2)}:1</span>
+    `;
+
+    renderResults(check);
+    renderFixes(fg, bg);
+  }
+
+  function renderResults(c: ReturnType<typeof checkContrast>) {
+    const items = [
+      { key: "aaNormal", label: "AA Normal Text (4.5:1)", pass: c.aaNormal },
+      { key: "aaLarge", label: "AA Large Text (3:1)", pass: c.aaLarge },
+      { key: "aaaNormal", label: "AAA Normal Text (7:1)", pass: c.aaaNormal },
+      { key: "aaaLarge", label: "AAA Large Text (4.5:1)", pass: c.aaaLarge },
+      { key: "ui", label: "UI Components (3:1)", pass: c.ui },
+    ];
+    results.innerHTML = "";
+    for (const item of items) {
+      const card = document.createElement("div");
+      card.className = `result-card ${item.pass ? "pass" : "fail"}`;
+      card.innerHTML = `
+        <div class="result-title">${item.label}</div>
+        <div class="result-ratio">${item.pass ? "✓ PASS" : "✗ FAIL"}</div>
+      `;
+      results.appendChild(card);
+    }
+  }
+
+  function renderFixes(fg: string, bg: string) {
+    const fixes = suggestFixes(fg, bg);
+    fixesBody!.innerHTML = "";
+    for (const fix of fixes) {
+      const tr = document.createElement("tr");
+      tr.style.borderBottom = "1px solid var(--border)";
+      const meets = fix.meets.length ? fix.meets.join(", ") : "—";
+      tr.innerHTML = `
+        <td style="padding:0.5rem">${fix.original} → ${fix.adjusted}</td>
+        <td style="padding:0.5rem"><span class="mono" style="background:${fix.adjusted};color:${contrastRatio(fix.adjusted, bg) > 3 ? "#000" : "#fff"};padding:0.1rem 0.4rem;border-radius:4px">${fix.adjusted}</span></td>
+        <td style="padding:0.5rem"><span class="mono">${fix.ratio.toFixed(2)}:1</span></td>
+        <td style="padding:0.5rem">${meets}</td>
+      `;
+      fixesBody!.appendChild(tr);
+    }
+  }
+
+  fgHex.addEventListener("input", update);
+  bgHex.addEventListener("input", update);
+  fgColor.addEventListener("input", () => { fgHex.value = fgColor.value; update(); });
+  bgColor.addEventListener("input", () => { bgHex.value = bgColor.value; update(); });
+  swapBtn.addEventListener("click", () => { const t = fgHex.value; fgHex.value = bgHex.value; bgHex.value = t; update(); });
+
+  update();
+</script>

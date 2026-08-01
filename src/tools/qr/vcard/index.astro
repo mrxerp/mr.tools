@@ -1,0 +1,211 @@
+---
+// mr.vcard — instant vCard QR from form fields, debounced while editing.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label class="field">
+      <span class="field-label">First name</span>
+      <input class="input" type="text" data-first />
+    </label>
+    <label class="field">
+      <span class="field-label">Last name</span>
+      <input class="input" type="text" data-last />
+    </label>
+  </div>
+  <label class="field">
+    <span class="field-label">Full name (optional — auto-filled from first/last)</span>
+    <input class="input" type="text" data-full placeholder="Ada Lovelace" />
+  </label>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label class="field">
+      <span class="field-label">Phone</span>
+      <input class="input" type="tel" data-phone />
+    </label>
+    <label class="field">
+      <span class="field-label">Email</span>
+      <input class="input" type="email" data-email />
+    </label>
+    <label class="field">
+      <span class="field-label">Organization</span>
+      <input class="input" type="text" data-org />
+    </label>
+    <label class="field">
+      <span class="field-label">Job title</span>
+      <input class="input" type="text" data-title />
+    </label>
+    <label class="field">
+      <span class="field-label">Website</span>
+      <input class="input" type="url" data-url placeholder="https://example.com" />
+    </label>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label class="field">
+      <span class="field-label">Street</span>
+      <input class="input" type="text" data-street />
+    </label>
+    <label class="field">
+      <span class="field-label">City</span>
+      <input class="input" type="text" data-city />
+    </label>
+    <label class="field">
+      <span class="field-label">Region / state</span>
+      <input class="input" type="text" data-region />
+    </label>
+    <label class="field">
+      <span class="field-label">Postal code</span>
+      <input class="input" type="text" data-postal />
+    </label>
+    <label class="field">
+      <span class="field-label">Country</span>
+      <input class="input" type="text" data-country />
+    </label>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label class="field">
+      <span class="field-label">Size: <span data-size-value>256</span>px</span>
+      <input class="input" type="range" min="96" max="1024" step="16" value="256" data-size />
+    </label>
+    <label class="field">
+      <span class="field-label">Error correction</span>
+      <select class="input" data-level>
+        <option value="M" selected>M — ~15%</option>
+        <option value="L">L — ~7% (smallest)</option>
+        <option value="Q">Q — ~25%</option>
+        <option value="H">H — ~30% (most robust)</option>
+      </select>
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn" type="button" data-copy>Copy vCard</button>
+    <button class="btn btn-primary" type="button" data-download disabled>Download PNG</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { buildVCard, generateVCardQrDataUrl, type VCardData } from "./tool.ts";
+  import { type QrOptions } from "../qr/tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { downloadBlob } from "@/lib/download";
+
+  const FIELD_KEYS: Record<string, keyof VCardData> = {
+    "[data-first]": "firstName",
+    "[data-last]": "lastName",
+    "[data-full]": "fullName",
+    "[data-phone]": "phone",
+    "[data-email]": "email",
+    "[data-org]": "org",
+    "[data-title]": "title",
+    "[data-url]": "url",
+    "[data-street]": "street",
+    "[data-city]": "city",
+    "[data-region]": "region",
+    "[data-postal]": "postalCode",
+    "[data-country]": "country",
+  };
+  const fields = new Map<keyof VCardData, HTMLInputElement>();
+  for (const [sel, key] of Object.entries(FIELD_KEYS)) {
+    const el = document.querySelector<HTMLInputElement>(sel);
+    if (!el) throw new Error(`mr.vcard mount failed: missing ${sel}`);
+    fields.set(key, el);
+  }
+  const sizeMaybe = document.querySelector<HTMLInputElement>("[data-size]");
+  const sizeValueMaybe = document.querySelector<HTMLSpanElement>("[data-size-value]");
+  const levelMaybe = document.querySelector<HTMLSelectElement>("[data-level]");
+  const copyBtnMaybe = document.querySelector<HTMLButtonElement>("[data-copy]");
+  const downloadBtnMaybe = document.querySelector<HTMLButtonElement>("[data-download]");
+  const outMaybe = document.querySelector<HTMLOutputElement>("[data-out]");
+  if (!sizeMaybe || !sizeValueMaybe || !levelMaybe || !copyBtnMaybe || !downloadBtnMaybe || !outMaybe) {
+    throw new Error("mr.vcard mount failed");
+  }
+  const size = sizeMaybe;
+  const sizeValue = sizeValueMaybe;
+  const level = levelMaybe;
+  const copyBtn = copyBtnMaybe;
+  const downloadBtn = downloadBtnMaybe;
+  const out = outMaybe;
+
+  let timer: number | undefined;
+  let latest = 0;
+  let currentSrc: string | null = null;
+
+  function config(): VCardData {
+    const data: VCardData = {};
+    for (const [key, el] of fields) data[key] = el.value;
+    return data;
+  }
+
+  function message(text: string, error = false) {
+    out.innerHTML = "";
+    const el = document.createElement("div");
+    if (error) el.className = "error-text";
+    el.textContent = text;
+    out.appendChild(el);
+  }
+
+  async function render() {
+    const id = ++latest;
+    sizeValue.textContent = size.value;
+    const data = config();
+    const vcard = buildVCard(data);
+    if (!vcard) {
+      currentSrc = null;
+      downloadBtn.disabled = true;
+      message("Add at least one contact field to generate the card.");
+      return;
+    }
+    try {
+      const src = await generateVCardQrDataUrl(data, {
+        width: Number(size.value),
+        errorCorrectionLevel: level.value as QrOptions["errorCorrectionLevel"],
+      });
+      if (id !== latest) return;
+      currentSrc = src;
+      out.innerHTML = "";
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = `QR vCard for ${vcard}`;
+      img.style.maxWidth = "100%";
+      img.style.height = "auto";
+      img.style.imageRendering = "pixelated";
+      out.appendChild(img);
+      downloadBtn.disabled = false;
+    } catch {
+      if (id !== latest) return;
+      currentSrc = null;
+      downloadBtn.disabled = true;
+      message("That card is too long to fit in a QR code — shorten the fields.", true);
+    }
+  }
+
+  function schedule() {
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(render, 250);
+  }
+
+  for (const el of fields.values()) el.addEventListener("input", schedule);
+  size.addEventListener("input", schedule);
+  level.addEventListener("change", schedule);
+
+  copyBtn.addEventListener("click", () => {
+    copyTextWithFeedback(buildVCard(config()), copyBtn);
+  });
+
+  downloadBtn.addEventListener("click", async () => {
+    if (!currentSrc) return;
+    try {
+      const res = await fetch(currentSrc);
+      const blob = await res.blob();
+      downloadBlob(blob, "mr-vcard.png");
+    } catch {
+      downloadBtn.textContent = "Download failed";
+      downloadBtn.disabled = true;
+      setTimeout(() => {
+        downloadBtn.textContent = "Download PNG";
+        downloadBtn.disabled = false;
+      }, 1500);
+    }
+  });
+
+  render();
+</script>

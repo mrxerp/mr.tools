@@ -1,0 +1,90 @@
+---
+// mr.dst — daylight saving transition explorer for any timezone/year.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label class="field">
+      <span class="field-label">Timezone</span>
+      <input class="input" type="text" list="dst-zones" placeholder="America/New_York" data-zone />
+    </label>
+    <label class="field">
+      <span class="field-label">Year</span>
+      <input class="input" type="number" min="1970" max="2100" value="2026" data-year />
+    </label>
+  </div>
+  <datalist id="dst-zones" data-zones></datalist>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { dstForDate, POPULAR_ZONES } from "./tool.ts";
+
+  const zoneEl = document.querySelector<HTMLInputElement>("[data-zone]")!;
+  const yearEl = document.querySelector<HTMLInputElement>("[data-year]")!;
+  const zonesEl = document.querySelector<HTMLDataListElement>("[data-zones]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
+  if (!zoneEl || !yearEl || !zonesEl || !out) throw new Error("mr.dst mount failed");
+
+  for (const z of POPULAR_ZONES) {
+    const opt = document.createElement("option");
+    opt.value = z;
+    zonesEl.appendChild(opt);
+  }
+
+  const monthName = (s: string) =>
+    new Intl.DateTimeFormat("en-US", { month: "long" }).format(
+      new Date(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, 1),
+    );
+
+  function render() {
+    out.innerHTML = "";
+    const zone = zoneEl.value.trim();
+    const year = Number(yearEl.value);
+    if (!zone || !Number.isInteger(year) || year < 1970 || year > 2100) {
+      out.textContent = "Enter a valid IANA timezone (e.g. America/New_York) and a year.";
+      return;
+    }
+    const r = dstForDate(zone, year, new Date());
+    const push = (text: string, cls = "") => {
+      const el = document.createElement("div");
+      if (cls) el.className = cls;
+      el.textContent = text;
+      out.appendChild(el);
+    };
+    if (!r.observesDST) {
+      push(`${r.zone} does not observe daylight saving time in ${year}.`);
+      push(`Current UTC offset: ${r.currentOffsetLabel} (${r.currentOffsetMinutes} min).`);
+      return;
+    }
+    push(`${r.zone} ${r.year} — ${r.inDST ? "currently in daylight saving time" : "currently on standard time"} (${r.currentOffsetLabel}).`);
+    if (r.nextChange) {
+      const noun = r.nextChange.direction === "start" ? "DST starts" : "DST ends";
+      const n = r.nextChange.daysUntil;
+      push(
+        n === 0
+          ? `${noun} today (${r.nextChange.date}).`
+          : `${noun} in ${n} day${n === 1 ? "" : "s"}: ${monthName(r.nextChange.date)} ${r.nextChange.date.slice(8, 10)}, ${r.nextChange.date.slice(0, 4)}.`,
+        "ok-text",
+      );
+    } else {
+      push("No further clock change within this year.");
+    }
+    push("");
+    for (const t of r.transitions) {
+      const label = t.direction === "start" ? "starts" : "ends";
+      push(
+        `${monthName(t.date)} ${t.date.slice(8, 10)}: DST ${label} — offset ${t.fromOffsetMinutes} → ${t.toOffsetMinutes} min (${offsetToText(t.fromOffsetMinutes)} → ${offsetToText(t.toOffsetMinutes)}).`,
+      );
+    }
+  }
+
+  function offsetToText(min: number): string {
+    const sign = min < 0 ? "-" : "+";
+    const abs = Math.abs(min);
+    return `UTC${sign}${Math.floor(abs / 60)}${abs % 60 ? ":" + String(abs % 60).padStart(2, "0") : ""}`;
+  }
+
+  zoneEl.addEventListener("input", render);
+  yearEl.addEventListener("input", render);
+  render();
+</script>

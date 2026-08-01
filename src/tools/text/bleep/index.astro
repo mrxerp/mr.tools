@@ -1,0 +1,50 @@
+---
+// mr.bleep — replace profanity and slurs with asterisks. All local.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Text</span>
+    <textarea class="input" rows="8" placeholder="Paste text to filter…" data-input></textarea>
+  </label>
+  <label class="field">
+    <span class="field-label">Extra words to censor (comma-separated)</span>
+    <input class="input" type="text" placeholder="e.g. darn, gosh" data-extra />
+  </label>
+  <div class="muted" data-count style="font-size:0.85rem"></div>
+  <div class="output-box" data-out aria-live="polite"></div>
+  <div class="actions">
+    <button class="btn" type="button" data-copy>Copy filtered text</button>
+  </div>
+</section>
+
+<script>
+  import { bleepText, detectBleeps } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const extra = document.querySelector<HTMLInputElement>("[data-extra]")!;
+  const count = document.querySelector<HTMLDivElement>("[data-count]")!;
+  const out = document.querySelector<HTMLDivElement>("[data-out]")!;
+  const copy = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  if (!input || !extra || !count || !out || !copy) throw new Error("mr bleep mount failed");
+
+  function customWords(): string[] {
+    return extra.value.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+
+  function render() {
+    const custom = customWords();
+    out.textContent = bleepText(input.value, { customWords: custom });
+    const found = detectBleeps(input.value, { customWords: custom });
+    count.textContent = found.length
+      ? `${found.length} filtered word(s): ${found.join(", ")}`
+      : "No filtered words found.";
+  }
+
+  copy.addEventListener("click", () =>
+    copyTextWithFeedback(bleepText(input.value, { customWords: customWords() }), copy),
+  );
+  input.addEventListener("input", render);
+  extra.addEventListener("input", render);
+  render();
+</script>

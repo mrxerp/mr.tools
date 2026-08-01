@@ -1,0 +1,59 @@
+---
+// mr.timezone — identify a place's IANA timezone and decode abbreviations.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">City or timezone</span>
+    <input class="input" type="text" placeholder="London, New York, Asia/Kolkata, EST…" data-query />
+  </label>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { findZones, resolveZone, zoneInfo } from "./tool.ts";
+
+  const queryEl = document.querySelector<HTMLInputElement>("[data-query]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
+  if (!queryEl || !out) throw new Error("mr.timezone mount failed");
+
+  function render() {
+    out.innerHTML = "";
+    const q = queryEl.value.trim();
+    if (!q) {
+      out.textContent = "Type a city or IANA timezone to look it up.";
+      return;
+    }
+    const zone = resolveZone(q);
+    if (!zone) {
+      const el = document.createElement("div");
+      el.className = "error-text";
+      el.textContent = `No timezone matched "${q}". Try a city (e.g. Tokyo) or a full IANA name (e.g. Asia/Tokyo).`;
+      out.appendChild(el);
+      return;
+    }
+    const info = zoneInfo(zone, new Date());
+    const push = (text: string, cls = "") => {
+      const el = document.createElement("div");
+      if (cls) el.className = cls;
+      el.textContent = text;
+      out.appendChild(el);
+    };
+    push(`${info.city} (${info.zone})`);
+    push(`Local time: ${info.localTime} · UTC offset ${info.offsetLabel} (${info.offsetMinutes} min)`);
+    push(`Abbreviation "${info.shortName}" = ${info.longName}${info.observesDST ? " — this zone has daylight saving time" : ""}`);
+    if (info.collisions.length > 1) {
+      const el = document.createElement("div");
+      el.className = "error-text";
+      el.textContent = `Warning: "${info.shortName}" is not unique — it also names: ${info.collisions.filter((z) => z !== info.zone).slice(0, 6).join(", ")}${info.collisions.length > 7 ? ", …" : ""}.`;
+      out.appendChild(el);
+    } else {
+      push(`"${info.shortName}" is unique to ${info.zone} at this moment.`);
+    }
+    if (findZones(q).length > 1) {
+      push(`Also matched: ${findZones(q).filter((z) => z !== info.zone).slice(0, 5).join(", ")}`);
+    }
+  }
+
+  queryEl.addEventListener("input", render);
+  render();
+</script>

@@ -1,0 +1,202 @@
+---
+// mr.mixer — two-track mix with volume, pan, fades, WAV export.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+    <div>
+      <div class="drop-zone" data-zone-a tabindex="0" role="button">
+        <input type="file" accept="audio/*" data-file-a hidden />
+        <div class="dz-title" data-title-a>Track A — drop or browse</div>
+        <div class="dz-hint">Volume / pan / fades</div>
+      </div>
+      <div data-controls-a style="display:none">
+        <label class="field">
+          <span class="field-label">Volume</span>
+          <input class="input" type="range" min="0" max="2" step="0.01" value="1" data-vol-a />
+        </label>
+        <label class="field">
+          <span class="field-label">Pan</span>
+          <input class="input" type="range" min="-1" max="1" step="0.01" value="0" data-pan-a />
+        </label>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:0.6rem">
+          <label class="field">
+            <span class="field-label">Fade in (s)</span>
+            <input class="input" type="number" min="0" max="30" step="0.1" value="0" data-fadein-a />
+          </label>
+          <label class="field">
+            <span class="field-label">Fade out (s)</span>
+            <input class="input" type="number" min="0" max="30" step="0.1" value="0" data-fadeout-a />
+          </label>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="drop-zone" data-zone-b tabindex="0" role="button">
+        <input type="file" accept="audio/*" data-file-b hidden />
+        <div class="dz-title" data-title-b>Track B — drop or browse</div>
+        <div class="dz-hint">Volume / pan / fades</div>
+      </div>
+      <div data-controls-b style="display:none">
+        <label class="field">
+          <span class="field-label">Volume</span>
+          <input class="input" type="range" min="0" max="2" step="0.01" value="1" data-vol-b />
+        </label>
+        <label class="field">
+          <span class="field-label">Pan</span>
+          <input class="input" type="range" min="-1" max="1" step="0.01" value="0" data-pan-b />
+        </label>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:0.6rem">
+          <label class="field">
+            <span class="field-label">Fade in (s)</span>
+            <input class="input" type="number" min="0" max="30" step="0.1" value="0" data-fadein-b />
+          </label>
+          <label class="field">
+            <span class="field-label">Fade out (s)</span>
+            <input class="input" type="number" min="0" max="30" step="0.1" value="0" data-fadeout-b />
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-mix disabled>Mix &amp; download WAV</button>
+  </div>
+  <p class="muted" style="font-size:0.85rem">
+    Both tracks start together; the mix length is the longer track. Nothing is uploaded.
+  </p>
+  <p class="error-text" data-error style="display:none"></p>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { mixTracks, encodeWav } from "./tool.ts";
+  import { readFileAsArrayBuffer } from "@/lib/files";
+  import { downloadBlob } from "@/lib/download";
+
+  type TrackSlot = {
+    zone: HTMLDivElement;
+    fileInput: HTMLInputElement;
+    title: HTMLDivElement;
+    controls: HTMLDivElement;
+    vol: HTMLInputElement;
+    pan: HTMLInputElement;
+    fadeIn: HTMLInputElement;
+    fadeOut: HTMLInputElement;
+    buffer: AudioBuffer | null;
+    name: string;
+  };
+
+  function makeSlot(suffix: "a" | "b"): TrackSlot {
+    const slot: TrackSlot = {
+      zone: document.querySelector<HTMLDivElement>(`[data-zone-${suffix}]`)!,
+      fileInput: document.querySelector<HTMLInputElement>(`[data-file-${suffix}]`)!,
+      title: document.querySelector<HTMLDivElement>(`[data-title-${suffix}]`)!,
+      controls: document.querySelector<HTMLDivElement>(`[data-controls-${suffix}]`)!,
+      vol: document.querySelector<HTMLInputElement>(`[data-vol-${suffix}]`)!,
+      pan: document.querySelector<HTMLInputElement>(`[data-pan-${suffix}]`)!,
+      fadeIn: document.querySelector<HTMLInputElement>(`[data-fadein-${suffix}]`)!,
+      fadeOut: document.querySelector<HTMLInputElement>(`[data-fadeout-${suffix}]`)!,
+      buffer: null,
+      name: "",
+    };
+    slot.zone.addEventListener("click", () => slot.fileInput.click());
+    slot.zone.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        slot.fileInput.click();
+      }
+    });
+    slot.fileInput.addEventListener("change", () => {
+      const file = slot.fileInput.files?.[0];
+      if (file) void loadInto(slot, file);
+      slot.fileInput.value = "";
+    });
+    slot.zone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      slot.zone.classList.add("drag");
+    });
+    slot.zone.addEventListener("dragleave", () => slot.zone.classList.remove("drag"));
+    slot.zone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      slot.zone.classList.remove("drag");
+      const file = e.dataTransfer?.files?.[0];
+      if (file) void loadInto(slot, file);
+    });
+    return slot;
+  }
+
+  const trackA = makeSlot("a");
+  const trackB = makeSlot("b");
+  const mixBtn = document.querySelector<HTMLButtonElement>("[data-mix]")!;
+  const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
+
+  function setError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+
+  function refresh() {
+    mixBtn.disabled = !trackA.buffer || !trackB.buffer;
+  }
+
+  async function loadInto(slot: TrackSlot, file: File) {
+    setError("");
+    try {
+      const ctx = new AudioContext();
+      const data = await readFileAsArrayBuffer(file);
+      slot.buffer = await ctx.decodeAudioData(data);
+      await ctx.close();
+      slot.name = file.name;
+      slot.title.textContent = file.name;
+      slot.controls.style.display = "";
+      refresh();
+    } catch {
+      slot.buffer = null;
+      slot.controls.style.display = "none";
+      setError(`Could not decode "${file.name}" as audio.`);
+      refresh();
+    }
+  }
+
+  function settings(slot: TrackSlot) {
+    return {
+      volume: Number(slot.vol.value),
+      pan: Number(slot.pan.value),
+      fadeInSec: Number(slot.fadeIn.value) || 0,
+      fadeOutSec: Number(slot.fadeOut.value) || 0,
+    };
+  }
+
+  function mono(buf: AudioBuffer): Float32Array {
+    const out = new Float32Array(buf.length);
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const data = buf.getChannelData(c);
+      for (let i = 0; i < out.length; i++) out[i] += data[i] / buf.numberOfChannels;
+    }
+    return out;
+  }
+
+  mixBtn.addEventListener("click", () => {
+    if (!trackA.buffer || !trackB.buffer) return;
+    setError("");
+    const rate = Math.max(trackA.buffer.sampleRate, trackB.buffer.sampleRate);
+    const mixed = mixTracks(
+      mono(trackA.buffer),
+      mono(trackB.buffer),
+      rate,
+      settings(trackA),
+      settings(trackB),
+    );
+    downloadBlob(
+      new Blob([encodeWav(mixed, rate, 2)], { type: "audio/wav" }),
+      "mr-mix.wav",
+    );
+    out.innerHTML = "";
+    const el = document.createElement("div");
+    el.textContent = `Mixed ${trackA.name} + ${trackB.name} to a stereo WAV.`;
+    out.appendChild(el);
+  });
+
+  refresh();
+</script>

@@ -1,0 +1,232 @@
+---
+// mr.doc — Markdown → DOCX/PDF with templates.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Markdown input</span>
+    <textarea class="input" rows="12" placeholder="Paste markdown to convert…" data-input></textarea>
+  </label>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0">
+    <label class="field">
+      <span class="field-label">Template</span>
+      <select class="input" data-template>
+        <option value="Professional">Professional</option>
+        <option value="Academic">Academic</option>
+        <option value="Modern">Modern</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">Output format</span>
+      <select class="input" data-format>
+        <option value="docx">DOCX</option>
+        <option value="pdf">PDF</option>
+      </select>
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" data-convert>Convert</button>
+    <button class="btn" data-preview>Preview Plain Text</button>
+  </div>
+  <div class="output-box" data-output aria-live="polite" style="display:none"></div>
+</section>
+
+<script>
+  import { parseMarkdown, blocksToPlainText, TEMPLATES } from "./tool.ts";
+  import { downloadArrayBuffer } from "@/lib/download";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const templateSelect = document.querySelector<HTMLSelectElement>("[data-template]")!;
+  const formatSelect = document.querySelector<HTMLSelectElement>("[data-format]")!;
+  const output = document.querySelector<HTMLDivElement>("[data-output]")!;
+
+  document.querySelector("[data-preview]")!.addEventListener("click", () => {
+    const blocks = parseMarkdown(input.value);
+    output.textContent = blocksToPlainText(blocks);
+    output.style.display = "block";
+  });
+
+  document.querySelector("[data-convert]")!.addEventListener("click", async () => {
+    const template = TEMPLATES.find((t) => t.name === templateSelect.value)!;
+    const format = formatSelect.value;
+    const blocks = parseMarkdown(input.value);
+
+    if (format === "docx") {
+      await convertToDocx(blocks, template);
+    } else {
+      await convertToPdf(blocks, template);
+    }
+  });
+
+  async function convertToDocx(blocks: ReturnType<typeof parseMarkdown>, template: typeof TEMPLATES[0]) {
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import("docx");
+    const headingLevelMap = {
+      1: HeadingLevel.HEADING_1,
+      2: HeadingLevel.HEADING_2,
+      3: HeadingLevel.HEADING_3,
+      4: HeadingLevel.HEADING_4,
+      5: HeadingLevel.HEADING_5,
+      6: HeadingLevel.HEADING_6,
+    };
+    const doc = new Document({
+      sections: [{
+        properties: { page: { margin: template.margins } },
+        children: blocks.map((b) => {
+          switch (b.type) {
+            case "heading":
+              return new Paragraph({
+                text: processInline(b.content),
+                heading: headingLevelMap[b.level || 1],
+                spacing: { after: 200 },
+              });
+            case "paragraph":
+              return new Paragraph({
+                children: [new TextRun({ text: processInline(b.content), size: template.fontSize * 2 })],
+                spacing: { after: 120 },
+              });
+            case "list":
+              return new Paragraph({
+                text: "• " + processInline(b.content),
+                indent: { left: 720 },
+                spacing: { after: 60 },
+              });
+            case "olist":
+              return new Paragraph({
+                text: "1. " + processInline(b.content),
+                indent: { left: 720 },
+                spacing: { after: 60 },
+              });
+            case "code":
+              return new Paragraph({
+                children: [new TextRun({ text: b.content, font: "Courier New", size: template.fontSize * 2 })],
+                spacing: { after: 120 },
+              });
+            case "blockquote":
+              return new Paragraph({
+                text: "> " + processInline(b.content),
+                indent: { left: 720 },
+                spacing: { after: 120 },
+              });
+            case "hr":
+              return new Paragraph({
+                border: { bottom: { color: "auto", space: 1, style: "single", size: 6 } },
+                spacing: { after: 120 },
+              });
+            default:
+              return new Paragraph({
+                children: [new TextRun({ text: processInline(b.content), size: template.fontSize * 2 })],
+                spacing: { after: 120 },
+              });
+          }
+        }),
+      }],
+    });
+
+    const blob = await Packer.toBlob(doc);
+    const arrayBuffer = await blob.arrayBuffer();
+    downloadArrayBuffer(arrayBuffer, "document.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  }
+
+  async function convertToPdf(blocks: ReturnType<typeof parseMarkdown>, template: typeof TEMPLATES[0]) {
+    const { PDFDocument, rgb, StandardFonts } = await import("pdf-lib");
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    let page = pdfDoc.addPage();
+    const { width, height } = page.getSize();
+    const margin = 72;
+    let y = height - margin;
+
+    for (const block of blocks) {
+      if (y < margin + 20) {
+        page = pdfDoc.addPage();
+        y = height - margin;
+      }
+
+      switch (block.type) {
+        case "heading": {
+          const level = block.level || 1;
+          const size = [24, 18, 14, 12, 11, 10][level - 1] || 10;
+          page.drawText(processInline(block.content), { x: margin, y, size, font: boldFont, color: rgb(0, 0, 0) });
+          y -= size + 10;
+          break;
+        }
+        case "paragraph": {
+          const lines = wrapText(processInline(block.content), width - 2 * margin, font, template.fontSize);
+          for (const line of lines) {
+            if (y < margin + 20) { page = pdfDoc.addPage(); y = height - margin; }
+            page.drawText(line, { x: margin, y, size: template.fontSize, font, color: rgb(0, 0, 0) });
+            y -= template.fontSize * 1.5;
+          }
+          y -= 6;
+          break;
+        }
+        case "list":
+        case "olist": {
+          const prefix = block.type === "list" ? "• " : "1. ";
+          const lines = wrapText(prefix + processInline(block.content), width - 2 * margin - 36, font, template.fontSize);
+          for (const line of lines) {
+            if (y < margin + 20) { page = pdfDoc.addPage(); y = height - margin; }
+            page.drawText(line, { x: margin + 36, y, size: template.fontSize, font, color: rgb(0, 0, 0) });
+            y -= template.fontSize * 1.5;
+          }
+          break;
+        }
+        case "code": {
+          const monoFont = await pdfDoc.embedFont(StandardFonts.Courier);
+          const lines = block.content.split("\n");
+          for (const line of lines) {
+            if (y < margin + 20) { page = pdfDoc.addPage(); y = height - margin; }
+            page.drawText(line, { x: margin + 18, y, size: template.fontSize - 1, font: monoFont, color: rgb(0.2, 0.2, 0.2) });
+            y -= (template.fontSize - 1) * 1.4;
+          }
+          y -= 6;
+          break;
+        }
+        case "blockquote": {
+          const lines = wrapText("> " + processInline(block.content), width - 2 * margin - 36, font, template.fontSize);
+          for (const line of lines) {
+            if (y < margin + 20) { page = pdfDoc.addPage(); y = height - margin; }
+            page.drawText(line, { x: margin + 36, y, size: template.fontSize, font, color: rgb(0.3, 0.3, 0.3) });
+            y -= template.fontSize * 1.5;
+          }
+          break;
+        }
+        case "hr": {
+          page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: 1, color: rgb(0.7, 0.7, 0.7) });
+          y -= 15;
+          break;
+        }
+      }
+    }
+
+    const pdfBytes = await pdfDoc.save();
+    downloadArrayBuffer(pdfBytes, "document.pdf", "application/pdf");
+  }
+
+  function processInline(text: string): string {
+    return text
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .replace(/\*(.+?)\*/g, "$1")
+      .replace(/`(.+?)`/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/!\[([^\]]*)\]\([^)]+\)/g, "[$1]");
+  }
+
+  function wrapText(text: string, maxWidth: number, font: any, size: number): string[] {
+    const words = text.split(" ");
+    const lines: string[] = [];
+    let current = "";
+    for (const word of words) {
+      const test = current + (current ? " " : "") + word;
+      const width = font.widthOfTextAtSize(test, size);
+      if (width > maxWidth && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = test;
+      }
+    }
+    if (current) lines.push(current);
+    return lines.length ? lines : [""];
+  }
+</script>

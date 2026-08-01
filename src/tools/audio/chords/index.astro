@@ -1,0 +1,176 @@
+---
+// mr.chords — chord notes + guitar/uke voicing from a root and quality.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))">
+    <label class="field">
+      <span class="field-label">Root</span>
+      <select class="input" data-root></select>
+    </label>
+    <label class="field">
+      <span class="field-label">Quality</span>
+      <select class="input" data-quality>
+        <option value="major">Major</option>
+        <option value="minor">Minor</option>
+        <option value="7">Dominant 7</option>
+        <option value="maj7">Major 7</option>
+        <option value="m7">Minor 7</option>
+        <option value="sus2">Sus 2</option>
+        <option value="sus4">Sus 4</option>
+        <option value="dim">Diminished</option>
+        <option value="aug">Augmented</option>
+        <option value="add9">Add 9</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">Instrument</span>
+      <select class="input" data-instrument>
+        <option value="guitar">Guitar</option>
+        <option value="ukulele">Ukulele</option>
+      </select>
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn" type="button" data-play>Play chord</button>
+    <button class="btn" type="button" data-print>Print chart</button>
+  </div>
+
+  <output class="output-box" data-chart aria-live="polite"></output>
+</section>
+
+<style>
+  .chord-chart {
+    font-family: var(--mono);
+    display: grid;
+    gap: 1rem;
+  }
+  .chord-strings {
+    display: flex;
+    gap: 0.4rem;
+    justify-content: center;
+  }
+  .chord-string {
+    text-align: center;
+    width: 2.2rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.4rem 0.1rem;
+  }
+  .chord-string .fret {
+    font-size: 1.4rem;
+    font-weight: 700;
+  }
+  .chord-string .string-name {
+    font-size: 0.7rem;
+    color: var(--muted);
+  }
+  .chord-muted .fret {
+    color: var(--danger);
+  }
+  .chord-tones {
+    text-align: center;
+    color: var(--muted);
+  }
+  @media print {
+    .stage .actions,
+    .stage > .grid {
+      display: none;
+    }
+    .chord-chart {
+      page-break-inside: avoid;
+    }
+  }
+</style>
+
+<script>
+  import { chordDiagram, chordTones, chordFrequencies } from "./tool.ts";
+  import { SEMITONES } from "../_notes.ts";
+
+  const rootEl = document.querySelector<HTMLSelectElement>("[data-root]")!;
+  const qualityEl = document.querySelector<HTMLSelectElement>("[data-quality]")!;
+  const instrumentEl = document.querySelector<HTMLSelectElement>("[data-instrument]")!;
+  const playBtn = document.querySelector<HTMLButtonElement>("[data-play]")!;
+  const printBtn = document.querySelector<HTMLButtonElement>("[data-print]")!;
+  const chart = document.querySelector<HTMLOutputElement>("[data-chart]")!;
+
+  for (const n of SEMITONES) {
+    const opt = document.createElement("option");
+    opt.value = n;
+    opt.textContent = n;
+    rootEl.appendChild(opt);
+  }
+  rootEl.value = "C";
+
+  let audioCtx: AudioContext | null = null;
+
+  const stringNames: Record<string, string[]> = {
+    guitar: ["E", "A", "D", "G", "B", "e"],
+    ukulele: ["G", "C", "E", "A"],
+  };
+
+  function render() {
+    const root = rootEl.value;
+    const quality = qualityEl.value as Parameters<typeof chordDiagram>[1];
+    const instrument = instrumentEl.value as "guitar" | "ukulele";
+    const dia = chordDiagram(root, quality, instrument);
+    const tones = chordTones(root, quality);
+
+    chart.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.className = "chord-chart";
+    const title = document.createElement("div");
+    title.textContent = `${dia.label} — ${tones.join(" · ")}`;
+    title.style.fontSize = "1.1rem";
+    wrap.appendChild(title);
+
+    const strings = document.createElement("div");
+    strings.className = "chord-strings";
+    const names = stringNames[instrument];
+    dia.frets.forEach((fret, i) => {
+      const cell = document.createElement("div");
+      cell.className = "chord-string" + (fret < 0 ? " chord-muted" : "");
+      const fretEl = document.createElement("div");
+      fretEl.className = "fret";
+      fretEl.textContent = fret < 0 ? "×" : String(fret);
+      const nameEl = document.createElement("div");
+      nameEl.className = "string-name";
+      nameEl.textContent = names[i];
+      cell.append(fretEl, nameEl);
+      strings.appendChild(cell);
+    });
+    wrap.appendChild(strings);
+
+    const note = document.createElement("div");
+    note.className = "chord-tones";
+    note.textContent = instrument === "guitar" ? "Suggested movable voicing — × means mute that string." : "Suggested ukulele voicing.";
+    wrap.appendChild(note);
+    chart.appendChild(wrap);
+  }
+
+  function play() {
+    const root = rootEl.value;
+    const quality = qualityEl.value as Parameters<typeof chordDiagram>[1];
+    audioCtx ??= new AudioContext();
+    if (audioCtx.state === "suspended") void audioCtx.resume();
+    const now = audioCtx.currentTime;
+    chordFrequencies(root, quality).forEach((f, i) => {
+      const osc = audioCtx!.createOscillator();
+      const gain = audioCtx!.createGain();
+      osc.type = "triangle";
+      osc.frequency.value = f;
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.6);
+      osc.connect(gain).connect(audioCtx!.destination);
+      osc.start(now + i * 0.06);
+      osc.stop(now + 1.8);
+    });
+  }
+
+  rootEl.addEventListener("change", render);
+  qualityEl.addEventListener("change", render);
+  instrumentEl.addEventListener("change", render);
+  playBtn.addEventListener("click", play);
+  printBtn.addEventListener("click", () => window.print());
+  render();
+</script>

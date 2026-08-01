@@ -1,0 +1,116 @@
+---
+// mr.beautify — Format, minify, validate, and sort JSON with tree/table views.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">JSON Input</span>
+    <textarea class="input" rows="10" placeholder="Paste JSON here…" data-input></textarea>
+    <div class="actions" style="margin-top:0.5rem">
+      <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem">
+        <input type="checkbox" data-sort> Sort keys
+      </label>
+      <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem">
+        <input type="checkbox" data-minify> Minify
+      </label>
+      <select class="input" data-indent style="width:auto;max-width:120px">
+        <option value="2">2 spaces</option>
+        <option value="4">4 spaces</option>
+        <option value="1">1 space</option>
+        <option value="0">Tabs</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-format>Format</button>
+    <button class="btn" data-copy>Copy</button>
+    <button class="btn" data-download>Download</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div class="field" style="margin-top:1rem">
+    <span class="field-label">Output <span data-status class="badge-plain"></span></span>
+    <textarea class="input" rows="12" readonly data-output aria-live="polite"></textarea>
+    <div class="error-text" data-error style="display:none;margin-top:0.5rem"></div>
+  </div>
+</section>
+
+<style>
+  .output-box { white-space: pre; font-family: var(--mono); }
+</style>
+
+<script>
+  import { beautifyJson, validateJson } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { downloadText } from "@/lib/download";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const output = document.querySelector<HTMLTextAreaElement>("[data-output]")!;
+  const status = document.querySelector<HTMLElement>("[data-status]")!;
+  const errorEl = document.querySelector<HTMLElement>("[data-error]")!;
+  const sortCheckbox = document.querySelector<HTMLInputElement>("[data-sort]")!;
+  const minifyCheckbox = document.querySelector<HTMLInputElement>("[data-minify]")!;
+  const indentSelect = document.querySelector<HTMLSelectElement>("[data-indent]")!;
+
+  const formatBtn = document.querySelector<HTMLButtonElement>("[data-format]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+
+  let lastResult = "";
+
+  function run() {
+    const opts = {
+      indent: indentSelect.value === "0" ? "\t" : parseInt(indentSelect.value, 10),
+      sortKeys: sortCheckbox.checked,
+      minify: minifyCheckbox.checked,
+    };
+
+    const result = beautifyJson(input.value, opts);
+    lastResult = result.output;
+
+    if (result.valid) {
+      output.value = result.output;
+      status.textContent = "Valid JSON";
+      status.className = "badge-ok";
+      errorEl.style.display = "none";
+    } else {
+      output.value = "";
+      status.textContent = "Invalid JSON";
+      status.className = "badge";
+      errorEl.style.display = "block";
+      errorEl.textContent = result.error?.message ?? "Parse error";
+    }
+  }
+
+  function validateOnly() {
+    const result = validateJson(input.value);
+    if (result.valid) {
+      status.textContent = "Valid JSON";
+      status.className = "badge-ok";
+      errorEl.style.display = "none";
+    } else {
+      status.textContent = "Invalid JSON";
+      status.className = "badge";
+      errorEl.style.display = "block";
+      errorEl.textContent = result.error?.message ?? "Parse error";
+    }
+  }
+
+  input.addEventListener("input", validateOnly);
+  sortCheckbox.addEventListener("change", run);
+  minifyCheckbox.addEventListener("change", run);
+  indentSelect.addEventListener("change", run);
+  formatBtn.addEventListener("click", run);
+  copyBtn.addEventListener("click", () => copyTextWithFeedback(lastResult, copyBtn));
+  downloadBtn.addEventListener("click", () => downloadText(lastResult, "formatted.json", "application/json"));
+  clearBtn.addEventListener("click", () => {
+    input.value = "";
+    output.value = "";
+    status.textContent = "";
+    status.className = "badge-plain";
+    errorEl.style.display = "none";
+  });
+
+  validateOnly();
+</script>

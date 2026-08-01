@@ -1,0 +1,293 @@
+---
+// mr.grok — Collapse huge JSON/XML into a navigable outline with chunked paging for large files.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">JSON / XML Input</span>
+    <textarea class="input" rows="8" placeholder="Paste JSON or XML here…" data-input></textarea>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-parse>Parse & Build Outline</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div style="display:flex;gap:1rem;flex-wrap:wrap;margin:1rem 0;align-items:center">
+    <div style="display:flex;align-items:center;gap:0.5rem">
+      <label class="field-label" style="margin:0;font-size:0.85rem">Search:</label>
+      <input class="input" type="search" data-search placeholder="Filter nodes…" style="width:200px">
+    </div>
+    <div style="display:flex;align-items:center;gap:0.5rem">
+      <label class="field-label" style="margin:0;font-size:0.85rem">Expression:</label>
+      <input class="input" type="text" data-expr placeholder="$.store.book[0].author" style="width:250px">
+      <button class="btn" data-eval>Eval</button>
+    </div>
+    <div data-stats class="badge-plain"></div>
+  </div>
+
+  <div class="field" style="margin-top:0.5rem">
+    <span class="field-label">Outline <span data-count class="badge-plain"></span></span>
+    <div class="output-box" data-tree style="min-height:300px;max-height:500px;overflow:auto;font-family:var(--mono);font-size:0.85rem"></div>
+    <div style="display:flex;gap:0.5rem;margin-top:0.5rem" data-pager></div>
+    <div class="error-text" data-error style="display:none;margin-top:0.5rem"></div>
+    <div data-eval-result style="margin-top:0.5rem"></div>
+  </div>
+</section>
+
+<style>
+  .grok-node { cursor: pointer; user-select: none; padding: 0.15rem 0; }
+  .grok-node:hover { background: var(--accent-soft); }
+  .grok-node.selected { background: var(--accent-soft); outline: 1px solid var(--accent); }
+  .grok-key { color: #6b6a66; }
+  .grok-string { color: #2e9e5b; }
+  .grok-number { color: #5a5bd9; }
+  .grok-boolean { color: #b7791f; }
+  .grok-null { color: #9b9a94; font-style: italic; }
+  .grok-expand { display: inline-block; width: 1.2em; text-align: center; cursor: pointer; }
+  .grok-children { margin-left: 1.5rem; border-left: 1px solid var(--border); padding-left: 0.5rem; }
+  .grok-value { margin-left: 0.5rem; }
+  .grok-size { color: var(--faint); font-size: 0.75rem; margin-left: 0.5rem; }
+  .pager-btn { padding: 0.25rem 0.75rem; font-size: 0.8rem; }
+  .pager-btn.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+</style>
+
+<script>
+  import {
+    buildGrokTree,
+    evaluateExpression,
+    getPage,
+    searchTree,
+    flattenTree,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const parseBtn = document.querySelector<HTMLButtonElement>("[data-parse]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const searchInput = document.querySelector<HTMLInputElement>("[data-search]")!;
+  const exprInput = document.querySelector<HTMLInputElement>("[data-expr]")!;
+  const evalBtn = document.querySelector<HTMLButtonElement>("[data-eval]")!;
+  const treeEl = document.querySelector<HTMLDivElement>("[data-tree]")!;
+  const countEl = document.querySelector<HTMLElement>("[data-count]")!;
+  const statsEl = document.querySelector<HTMLElement>("[data-stats]")!;
+  const pagerEl = document.querySelector<HTMLDivElement>("[data-pager]")!;
+  const errorEl = document.querySelector<HTMLElement>("[data-error]")!;
+  const evalResultEl = document.querySelector<HTMLElement>("[data-eval-result]")!;
+
+  let currentTree: any[] = [];
+  let filteredTree: any[] = [];
+  let currentPage = 0;
+  const pageSize = 200;
+  let selectedNode: HTMLElement | null = null;
+
+  parseBtn.addEventListener("click", () => {
+    errorEl.style.display = "none";
+    evalResultEl.innerHTML = "";
+    try {
+      let data: unknown;
+      const trimmed = input.value.trim();
+      if (trimmed.startsWith("<")) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(trimmed, "application/xml");
+        const err = doc.querySelector("parsererror");
+        if (err) throw new Error(err.textContent || "XML parse error");
+        data = xmlToJson(doc.documentElement);
+      } else {
+        data = JSON.parse(trimmed);
+      }
+      const result = buildGrokTree(data);
+      currentTree = result.tree;
+      filteredTree = result.tree;
+      currentPage = 0;
+      statsEl.textContent = `${result.nodeCount} nodes, ${formatBytes(result.totalSize)}`;
+      renderPage();
+    } catch (e) {
+      errorEl.style.display = "block";
+      errorEl.textContent = (e as Error).message;
+    }
+  });
+
+  function xmlToJson(element: Element): unknown {
+    const obj: Record<string, unknown> = {};
+    if (element.attributes.length > 0) {
+      obj["@attributes"] = {};
+      for (const attr of element.attributes) {
+        (obj["@attributes"] as Record<string, string>)[attr.name] = attr.value;
+      }
+    }
+    const children = Array.from(element.children);
+    if (children.length === 0) {
+      const text = element.textContent?.trim();
+      if (text) obj["#text"] = text;
+    } else {
+      const groups: Record<string, Element[]> = {};
+      for (const child of children) {
+        if (!groups[child.tagName]) groups[child.tagName] = [];
+        groups[child.tagName].push(child);
+      }
+      for (const [tag, elements] of Object.entries(groups)) {
+        if (elements.length === 1) obj[tag] = xmlToJson(elements[0]);
+        else obj[tag] = elements.map(xmlToJson);
+      }
+    }
+    return obj;
+  }
+
+  function formatBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  }
+
+  clearBtn.addEventListener("click", () => {
+    input.value = "";
+    treeEl.innerHTML = "";
+    countEl.textContent = "";
+    statsEl.textContent = "";
+    pagerEl.innerHTML = "";
+    currentTree = [];
+    filteredTree = [];
+    errorEl.style.display = "none";
+    evalResultEl.innerHTML = "";
+  });
+
+  searchInput.addEventListener("input", () => {
+    const query = searchInput.value.trim().toLowerCase();
+    if (!query) {
+      filteredTree = currentTree;
+    } else {
+      filteredTree = searchTree(currentTree, query);
+    }
+    currentPage = 0;
+    renderPage();
+  });
+
+  evalBtn.addEventListener("click", () => {
+    evalResultEl.innerHTML = "";
+    if (!currentTree[0]) return;
+    const expr = exprInput.value.trim();
+    if (!expr) return;
+    const rootData = getRootData(currentTree[0]);
+    const result = evaluateExpression(rootData, expr);
+    const div = document.createElement("div");
+    if (result.error) {
+      div.className = "error-text";
+      div.textContent = `Error: ${result.error}`;
+    } else {
+      div.className = "ok-text";
+      div.textContent = `Result: ${JSON.stringify(result.result)}`;
+      const copyBtn = document.createElement("button");
+      copyBtn.className = "btn";
+      copyBtn.style.marginLeft = "0.5rem";
+      copyBtn.textContent = "Copy";
+      copyBtn.addEventListener("click", () => copyTextWithFeedback(JSON.stringify(result.result), copyBtn));
+      div.appendChild(copyBtn);
+    }
+    evalResultEl.appendChild(div);
+  });
+
+  function getRootData(node: any): unknown {
+    if (node.path === "$") return node.value;
+    return node.value;
+  }
+
+  function renderPage() {
+    const flat = flattenTree(filteredTree);
+    countEl.textContent = `${flat.length} nodes${flat.length !== currentTree.flat().length ? ` (filtered)` : ""}`;
+    const totalPages = Math.ceil(flat.length / pageSize);
+    const pageNodes = getPage(filteredTree, currentPage, pageSize);
+
+    treeEl.innerHTML = "";
+    for (const node of pageNodes) {
+      treeEl.appendChild(renderNode(node));
+    }
+
+    renderPager(totalPages);
+  }
+
+  function renderNode(node: any): HTMLElement {
+    const div = document.createElement("div");
+    div.className = "grok-node";
+    div.dataset.path = node.path;
+
+    const expand = document.createElement("span");
+    expand.className = "grok-expand";
+    expand.textContent = node.children && node.children.length > 0 ? (node.collapsed ? "▶" : "▼") : "·";
+
+    const key = document.createElement("span");
+    key.className = "grok-key";
+    key.textContent = node.key === "$" ? "$" : node.key;
+
+    const value = document.createElement("span");
+    value.className = "grok-value";
+
+    if (node.type === "object" || node.type === "array") {
+      value.textContent = node.type === "array" ? ` [${node.children?.length ?? 0}]` : ` {${node.children?.length ?? 0}}`;
+      value.style.color = "var(--muted)";
+    } else if (node.type === "string") {
+      value.className = "grok-value grok-string";
+      value.textContent = ` "${String(node.value).slice(0, 80)}${String(node.value).length > 80 ? "…" : ""}"`;
+    } else if (node.type === "number") {
+      value.className = "grok-value grok-number";
+      value.textContent = ` ${node.value}`;
+    } else if (node.type === "boolean") {
+      value.className = "grok-value grok-boolean";
+      value.textContent = ` ${node.value}`;
+    } else if (node.type === "null") {
+      value.className = "grok-value grok-null";
+      value.textContent = " null";
+    }
+
+    const size = document.createElement("span");
+    size.className = "grok-size";
+    size.textContent = `${formatBytes(node.size)}`;
+
+    div.append(expand, key, value, size);
+
+    if (node.children && node.children.length > 0) {
+      const childrenDiv = document.createElement("div");
+      childrenDiv.className = "grok-children";
+      childrenDiv.style.display = node.collapsed ? "none" : "block";
+      for (const child of node.children) {
+        childrenDiv.appendChild(renderNode(child));
+      }
+      div.appendChild(childrenDiv);
+
+      expand.addEventListener("click", (e) => {
+        e.stopPropagation();
+        node.collapsed = !node.collapsed;
+        childrenDiv.style.display = node.collapsed ? "none" : "block";
+        expand.textContent = node.collapsed ? "▶" : "▼";
+      });
+    }
+
+    div.addEventListener("click", () => {
+      if (selectedNode) selectedNode.classList.remove("selected");
+      div.classList.add("selected");
+      selectedNode = div;
+      exprInput.value = node.path;
+    });
+
+    return div;
+  }
+
+  function renderPager(totalPages: number) {
+    pagerEl.innerHTML = "";
+    if (totalPages <= 1) return;
+    const maxVisible = 5;
+    let start = Math.max(0, currentPage - Math.floor(maxVisible / 2));
+    let end = Math.min(totalPages, start + maxVisible);
+    if (end - start < maxVisible) start = Math.max(0, end - maxVisible);
+
+    for (let i = start; i < end; i++) {
+      const btn = document.createElement("button");
+      btn.className = "btn pager-btn" + (i === currentPage ? " active" : "");
+      btn.textContent = String(i + 1);
+      btn.addEventListener("click", () => {
+        currentPage = i;
+        renderPage();
+      });
+      pagerEl.appendChild(btn);
+    }
+  }
+</script>

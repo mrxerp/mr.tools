@@ -1,0 +1,87 @@
+---
+// mr.date diff — exact duration between two dates in every unit.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+    <label class="field">
+      <span class="field-label">Start date</span>
+      <input class="input" type="date" data-a />
+    </label>
+    <label class="field">
+      <span class="field-label">End date</span>
+      <input class="input" type="date" data-b />
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn" type="button" data-today>End today</button>
+    <button class="btn" type="button" data-copy>Copy sentence</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { dateDiff, durationSentence, weekdayName } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const aEl = document.querySelector<HTMLInputElement>("[data-a]")!;
+  const bEl = document.querySelector<HTMLInputElement>("[data-b]")!;
+  const todayBtn = document.querySelector<HTMLButtonElement>("[data-today]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
+  if (!aEl || !bEl || !todayBtn || !copyBtn || !out) throw new Error("mr.date diff mount failed");
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parse = (v: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(NaN);
+  };
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+
+  function render() {
+    out.innerHTML = "";
+    const a = parse(aEl.value);
+    const b = parse(bEl.value);
+    if (!aEl.value || !bEl.value) {
+      out.textContent = "Enter both dates to see the difference.";
+      return;
+    }
+    const r = dateDiff(a, b);
+    if (!r.ok) {
+      const el = document.createElement("div");
+      el.className = "error-text";
+      el.textContent = "Enter valid dates.";
+      out.appendChild(el);
+      return;
+    }
+    const start = a.getTime() <= b.getTime() ? a : b;
+    const end = a.getTime() <= b.getTime() ? b : a;
+    const lines = [
+      `${weekdayName(start)}, ${iso(start)} → ${weekdayName(end)}, ${iso(end)}`,
+      `Duration: ${plural(r.years, "year")}, ${plural(r.months, "month")}, ${plural(r.days, "day")}`,
+      `Total: ${plural(r.totalDays, "day")} · ${r.totalWeeks.toFixed(1)} weeks · ${Math.round(r.totalHours).toLocaleString("en-US")} hours · ${Math.round(r.totalMinutes).toLocaleString("en-US")} minutes`,
+      `Business days (Mon–Fri, both dates counted): ${r.weekdays} · weekends: ${r.weekends}`,
+    ];
+    for (const line of lines) {
+      const el = document.createElement("div");
+      el.textContent = line;
+      out.appendChild(el);
+    }
+  }
+
+  aEl.addEventListener("input", render);
+  bEl.addEventListener("input", render);
+  todayBtn.addEventListener("click", () => {
+    bEl.value = iso(new Date());
+    render();
+  });
+  copyBtn.addEventListener("click", () => {
+    const r = dateDiff(parse(aEl.value), parse(bEl.value));
+    if (r.ok) copyTextWithFeedback(durationSentence(r), copyBtn);
+  });
+
+  const now = new Date();
+  aEl.value = iso(new Date(now.getFullYear(), now.getMonth() - 6, now.getDate()));
+  bEl.value = iso(now);
+  render();
+</script>

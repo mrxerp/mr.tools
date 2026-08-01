@@ -1,0 +1,98 @@
+---
+---
+<section class="stage">
+  <h2>mr.hue</h2>
+  <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem">Interactive color wheel with EyeDropper, harmonies, and full format conversion.</p>
+
+  <div class="field">
+    <span class="field-label">Color Input</span>
+    <input class="input" type="text" placeholder="#ff6b35 or rgb(255,107,53)…" data-input />
+  </div>
+
+  <div class="field">
+    <span class="field-label">Or pick from screen</span>
+    <button class="btn" data-pick>Pick Color (EyeDropper)</button>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-go>Analyze</button>
+    <button class="btn" data-copy style="display:none">Copy HEX</button>
+  </div>
+
+  <div class="output-box" data-result style="display:none;max-height:300px;overflow:auto"></div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { parseColor, generateHarmonies, formatBytes } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLInputElement>("[data-input]")!;
+  const pickBtn = document.querySelector<HTMLButtonElement>("[data-pick]")!;
+  const goBtn = document.querySelector<HTMLButtonElement>("[data-go]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const resultBox = document.querySelector<HTMLElement>("[data-result]")!;
+  const outBox = document.querySelector<HTMLElement>("[data-out]")!;
+
+  let lastColor: any = null;
+
+  async function pickColor() {
+    try {
+      if (!("EyeDropper" in window)) throw new Error("EyeDropper API not supported");
+      const eyeDropper = new EyeDropper();
+      const result = await eyeDropper.open();
+      input.value = result.sRGBHex;
+      analyze();
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  }
+
+  function analyze() {
+    const value = input.value.trim();
+    if (!value) return;
+
+    try {
+      const color = parseColor(value);
+      if (!color) throw new Error("Invalid color format");
+
+      const harmonies = generateHarmonies(color);
+      lastColor = color;
+
+      let html = `<strong>Parsed:</strong> ${color.hex}<br>`;
+      html += `<strong>RGB:</strong> rgb(${color.rgb.r}, ${color.rgb.g}, ${color.rgb.b})<br>`;
+      html += `<strong>HSL:</strong> hsl(${color.hsl.h}, ${color.hsl.s}%, ${color.hsl.l}%)<br>`;
+      html += `<strong>OKLCH:</strong> oklch(${color.oklch.l.toFixed(3)} ${color.oklch.c.toFixed(3)} ${color.oklch.h.toFixed(1)})<br>`;
+      html += `<strong>LAB:</strong> lab(${color.lab.l.toFixed(1)} ${color.lab.a.toFixed(1)} ${color.lab.b.toFixed(1)})<br>`;
+      if (color.name) html += `<strong>Name:</strong> ${color.name}<br>`;
+
+      html += `<hr style="margin:0.5rem 0"><strong>Harmonies:</strong><br>`;
+      for (const h of harmonies) {
+        html += `${h.type}: ${h.colors.map(c => c.hex).join(", ")}<br>`;
+      }
+
+      resultBox.style.display = "block";
+      resultBox.innerHTML = html;
+      copyBtn.style.display = "";
+      outBox.textContent = `Analyzed: ${color.hex}`;
+      outBox.className = "output-box ok-text";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  }
+
+  pickBtn.addEventListener("click", pickColor);
+  goBtn.addEventListener("click", analyze);
+  input.addEventListener("input", () => { if (input.value.length >= 3) analyze(); });
+
+  copyBtn.addEventListener("click", () => {
+    if (lastColor) copyTextWithFeedback(lastColor.hex, copyBtn);
+  });
+</script>
+
+<style>
+  .drop-zone.drag { border-color: var(--accent); background: var(--accent-soft); }
+</style>

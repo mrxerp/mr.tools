@@ -1,0 +1,195 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose CSV or XLSX file to split">
+    <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-input hidden />
+    <span class="dz-title">Drop a CSV or XLSX file here or click to browse</span>
+    <span class="dz-hint">Split by column value or by row count. Download all parts as a ZIP.</span>
+  </div>
+
+  <fieldset class="field" data-options style="display:none">
+    <legend class="field-label">Split mode</legend>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="radio" name="mode" value="column" checked data-mode-col /> By column value (one file per unique value)
+    </label>
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="radio" name="mode" value="rows" data-mode-row /> By row count
+    </label>
+
+    <div data-col-options>
+      <label class="field" style="margin-top:0.5rem">
+        <span class="field-label">Column to split by</span>
+        <select class="input" data-col-select></select>
+      </label>
+    </div>
+
+    <div data-row-options style="display:none;margin-top:0.5rem">
+      <label class="field">
+        <span class="field-label">Rows per file</span>
+        <input type="number" class="input" value="1000" min="1" data-row-count />
+      </label>
+    </div>
+
+    <label class="field" style="margin-top:0.5rem">
+      <span class="field-label">Output format</span>
+      <select class="input" data-format>
+        <option value="csv">CSV</option>
+        <option value="xlsx">XLSX (requires SheetJS)</option>
+      </select>
+    </label>
+
+    <label style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+      <input type="checkbox" checked data-include-header /> Include header in each file
+    </label>
+  </fieldset>
+
+  <div class="actions">
+    <button type="button" class="btn btn-primary" data-run disabled>Split & zip</button>
+    <button type="button" class="btn" data-download hidden>Download ZIP</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { splitSpreadsheet, createZip } from "./tool.ts";
+  import { readFileAsArrayBuffer, readFileAsText, formatBytes, swapExtension, fileNameOf } from "@/lib/files";
+  import { downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const optionsEl = document.querySelector<HTMLFieldSetElement>("[data-options]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const download = document.querySelector<HTMLButtonElement>("[data-download]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  const modeCol = document.querySelector<HTMLInputElement>("[data-mode-col]");
+  const modeRow = document.querySelector<HTMLInputElement>("[data-mode-row]");
+  const colOptions = document.querySelector<HTMLDivElement>("[data-col-options]");
+  const rowOptions = document.querySelector<HTMLDivElement>("[data-row-options]");
+  const colSelect = document.querySelector<HTMLSelectElement>("[data-col-select]");
+  const rowCount = document.querySelector<HTMLInputElement>("[data-row-count]");
+  const format = document.querySelector<HTMLSelectElement>("[data-format]");
+  const includeHeader = document.querySelector<HTMLInputElement>("[data-include-header]");
+
+  if (!zone || !input || !optionsEl || !run || !download || !out || !modeCol || !modeRow ||
+      !colOptions || !rowOptions || !colSelect || !rowCount || !format || !includeHeader) {
+    throw new Error("mr split mount failed");
+  }
+
+  let file: File | null = null;
+  let isXlsx = false;
+  let zipData: Uint8Array | null = null;
+  let zipName = "";
+
+  const updateModeUI = () => {
+    if (modeCol.checked) {
+      colOptions.style.display = "";
+      rowOptions.style.display = "none";
+    } else {
+      colOptions.style.display = "none";
+      rowOptions.style.display = "";
+    }
+  };
+
+  const populateColumns = async (headers: string[]) => {
+    colSelect.innerHTML = "";
+    for (const h of headers) {
+      const opt = document.createElement("option");
+      opt.value = h;
+      opt.textContent = h;
+      colSelect.appendChild(opt);
+    }
+  };
+
+  const addFile = async (f: File) => {
+    file = f;
+    isXlsx = f.name.toLowerCase().endsWith(".xlsx") || f.type.includes("spreadsheetml");
+    optionsEl.style.display = "";
+    run.disabled = false;
+    out.textContent = `Ready: ${f.name} (${formatBytes(f.size)})`;
+    download.hidden = true;
+    zipData = null;
+
+    if (isXlsx) {
+      try {
+        const buf = await readFileAsArrayBuffer(f);
+        const XLSX = await import("xlsx");
+        const wb = XLSX.read(buf, { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as string[][];
+        await populateColumns(json[0] || []);
+      } catch {
+        out.innerHTML = '<div class="error-text">Failed to read XLSX file.</div>';
+        run.disabled = true;
+      }
+    } else {
+      try {
+        const text = await readFileAsText(f);
+        const lines = text.split(/\r?\n/);
+        const firstLine = lines[0] || "";
+        const delim = [",", "\t", ";", "|"].find(d => firstLine.includes(d)) || ",";
+        const headers = firstLine.split(delim).map(h => h.replace(/^"|"$/g, "").trim());
+        await populateColumns(headers);
+      } catch {
+        out.innerHTML = '<div class="error-text">Failed to parse CSV.</div>';
+        run.disabled = true;
+      }
+    }
+  };
+
+  const doSplit = async () => {
+    if (!file) return;
+    run.disabled = true;
+    out.textContent = "Splitting…";
+    try {
+      let inputData: string | Uint8Array;
+      if (isXlsx) {
+        inputData = await readFileAsArrayBuffer(file);
+      } else {
+        inputData = await readFileAsText(file);
+      }
+      const result = await splitSpreadsheet(inputData, {
+        mode: modeCol.checked ? "column" : "rows",
+        columnName: colSelect.value || undefined,
+        rowsPerFile: parseInt(rowCount.value, 10) || 1000,
+        includeHeader: includeHeader.checked,
+        outputFormat: format.value as "csv" | "xlsx",
+      }, isXlsx);
+
+      if (result.files.length === 0) {
+        out.innerHTML = '<div class="error-text">No data to split.</div>';
+        return;
+      }
+
+      out.textContent = `Created ${result.partCount} parts from ${result.totalRows} rows. Building ZIP…`;
+      zipData = await createZip(result.files);
+      zipName = swapExtension(fileNameOf(file), "zip");
+      out.textContent = `Done: ${result.partCount} files zipped (${formatBytes(zipData.length)}).`;
+      download.hidden = false;
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Split failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = !file;
+    }
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  input.addEventListener("change", () => { if (input.files?.[0]) addFile(input.files[0]); input.value = ""; });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => { e.preventDefault(); zone.classList.remove("drag"); if (e.dataTransfer?.files?.[0]) addFile(e.dataTransfer.files[0]); });
+
+  modeCol.addEventListener("change", updateModeUI);
+  modeRow.addEventListener("change", updateModeUI);
+
+  run.addEventListener("click", doSplit);
+
+  download.addEventListener("click", () => {
+    if (zipData) downloadArrayBuffer(zipData, zipName, "application/zip");
+  });
+</script>

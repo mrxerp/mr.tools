@@ -1,0 +1,201 @@
+---
+---
+<section class="stage">
+  <h2>ContactPack</h2>
+  <p class="muted" style="margin-top:-0.5rem;margin-bottom:1rem">Convert spreadsheet/CSV → individual .vcf vCard files (or merged). Validate, dedupe.</p>
+
+  <div class="field">
+    <span class="field-label">File</span>
+    <div class="drop-zone" data-zone>
+      <input type="file" class="input" style="display:none" accept=".csv,.xlsx,.xls" data-file />
+      <div class="dz-title">Drop CSV or Excel file or click to browse</div>
+      <div class="dz-hint">CSV, XLSX — max 10MB recommended</div>
+    </div>
+  </div>
+
+  <div class="field" data-options style="display:none">
+    <span class="field-label">vCard Version</span>
+    <select class="input" data-version>
+      <option value="3.0">3.0 (most compatible)</option>
+      <option value="4.0">4.0 (modern)</option>
+      <option value="2.1">2.1 (legacy)</option>
+    </select>
+  </div>
+
+  <div class="field" data-options style="display:none">
+    <label class="input" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;padding:0.6rem 0.75rem">
+      <input type="checkbox" data-merge> Merge into single .vcf file
+    </label>
+  </div>
+
+  <div class="field" data-options style="display:none">
+    <label class="input" style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;padding:0.6rem 0.75rem">
+      <input type="checkbox" data-dedupe checked> Deduplicate contacts
+    </label>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" data-convert style="display:none">Generate vCard(s)</button>
+    <button class="btn" data-download style="display:none">Download</button>
+  </div>
+
+  <div class="output-box" data-preview style="display:none;max-height:400px;overflow:auto"></div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { parseContacts, deduplicateContacts, generateVCardFile, formatBytes } from "./tool.ts";
+  import { downloadText } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const optionsDiv = document.querySelectorAll<HTMLElement>("[data-options]");
+  const versionSel = document.querySelector<HTMLSelectElement>("[data-version]")!;
+  const mergeCheckbox = document.querySelector<HTMLInputElement>("[data-merge]")!;
+  const dedupeCheckbox = document.querySelector<HTMLInputElement>("[data-dedupe]")!;
+  const convertBtn = document.querySelector<HTMLButtonElement>("[data-convert]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const previewBox = document.querySelector<HTMLElement>("[data-preview]")!;
+  const outBox = document.querySelector<HTMLElement>("[data-out]")!;
+
+  let contacts: any[] = [];
+  let vcardContent: string = "";
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer?.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files?.[0]) handleFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  async function handleFile(file: File) {
+    convertBtn.disabled = true;
+    convertBtn.style.display = "none";
+    downloadBtn.style.display = "none";
+    previewBox.style.display = "none";
+    optionsDiv.forEach(d => d.style.display = "none");
+
+    outBox.textContent = "Reading file...";
+    outBox.className = "output-box";
+
+    try {
+      let text: string;
+      if (file.name.endsWith(".csv")) {
+        text = await file.text();
+        contacts = parseContacts(text, "csv");
+      } else {
+        const data = new Uint8Array(await file.arrayBuffer());
+        contacts = parseContacts("", "xlsx");
+      }
+
+      if (dedupeCheckbox.checked) {
+        contacts = deduplicateContacts(contacts);
+      }
+
+      optionsDiv.forEach(d => d.style.display = "");
+      convertBtn.style.display = "";
+      convertBtn.disabled = contacts.length === 0;
+
+      outBox.textContent = `Parsed ${contacts.length} contact${contacts.length !== 1 ? "s" : ""}`;
+      outBox.className = "output-box ok-text";
+
+      renderPreview();
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    }
+  }
+
+  function renderPreview() {
+    previewBox.style.display = "block";
+    previewBox.innerHTML = "";
+
+    if (contacts.length === 0) {
+      previewBox.textContent = "No valid contacts found";
+      return;
+    }
+
+    const div = document.createElement("div");
+    div.style.fontSize = "0.9rem";
+    div.innerHTML = `<strong>${contacts.length} contact${contacts.length !== 1 ? "s" : ""} ready</strong>`;
+    previewBox.appendChild(div);
+
+    const list = document.createElement("ul");
+    list.style.marginTop = "0.5rem";
+    list.style.maxHeight = "250px";
+    list.style.overflow = "auto";
+    contacts.slice(0, 20).forEach(c => {
+      const li = document.createElement("li");
+      li.style.fontSize = "0.8rem";
+      li.style.fontFamily = "var(--mono)";
+      const email = c.emails[0] || "no email";
+      const phone = c.phones[0] || "no phone";
+      li.textContent = `${c.firstName} ${c.lastName} — ${email} — ${phone}`;
+      if (!isValidEmail(c.emails[0]) || !isValidPhone(c.phones[0])) {
+        li.style.color = "var(--warn)";
+      }
+      list.appendChild(li);
+    });
+    if (contacts.length > 20) {
+      const li = document.createElement("li");
+      li.style.fontSize = "0.8rem";
+      li.style.color = "var(--muted)";
+      li.textContent = `... and ${contacts.length - 20} more`;
+      list.appendChild(li);
+    }
+    previewBox.appendChild(list);
+  }
+
+  function isValidEmail(email: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || "");
+  }
+
+  function isValidPhone(phone: string): boolean {
+    const cleaned = phone.replace(/[\s\-\(\)\+]/g, "");
+    return /^\+?\d{7,15}$/.test(cleaned);
+  }
+
+  convertBtn.addEventListener("click", () => {
+    if (contacts.length === 0) return;
+    convertBtn.disabled = true;
+    convertBtn.textContent = "Generating...";
+    outBox.textContent = "";
+    outBox.className = "output-box";
+
+    try {
+      const options = {
+        version: versionSel.value as "2.1" | "3.0" | "4.0",
+        merge: mergeCheckbox.checked,
+      };
+
+      vcardContent = generateVCardFile(contacts, options);
+      const count = mergeCheckbox.checked ? 1 : contacts.length;
+      outBox.textContent = `Generated ${count} vCard${count !== 1 ? "s" : ""} (${formatBytes(vcardContent.length)}). Ready to download.`;
+      outBox.className = "output-box ok-text";
+      downloadBtn.style.display = "";
+    } catch (e) {
+      outBox.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
+      outBox.className = "output-box error-text";
+    } finally {
+      convertBtn.disabled = false;
+      convertBtn.textContent = "Generate vCard(s)";
+    }
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    if (!vcardContent) return;
+    const filename = mergeCheckbox.checked ? "contacts.vcf" : "contacts.zip";
+    downloadText(vcardContent, filename, "text/vcard");
+  });
+</script>
+
+<style>
+  .drop-zone.drag { border-color: var(--accent); background: var(--accent-soft); }
+</style>

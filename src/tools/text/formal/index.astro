@@ -1,0 +1,42 @@
+---
+// mr.formal — turn chatty text into formal business tone (rules only, no AI).
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Chatty text</span>
+    <textarea class="input" rows="8" placeholder="hey, i can't come cuz i'm busy…" data-input></textarea>
+  </label>
+  <div class="muted" data-stats style="font-size:0.85rem"></div>
+  <div class="output-box" data-out aria-live="polite"></div>
+  <div class="actions">
+    <button class="btn" type="button" data-copy>Copy formal text</button>
+  </div>
+  <p class="muted" style="font-size:0.8rem;margin-block:0.8rem 0">
+    Rules-based: contractions expanded, common slang swapped, capitalization fixed.
+    It does not judge tone or rewrite grammar.
+  </p>
+</section>
+
+<script>
+  import { formalizeWithStats } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const stats = document.querySelector<HTMLDivElement>("[data-stats]")!;
+  const out = document.querySelector<HTMLDivElement>("[data-out]")!;
+  const copy = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  if (!input || !stats || !out || !copy) throw new Error("mr formal mount failed");
+
+  function render() {
+    const r = formalizeWithStats(input.value);
+    out.textContent = r.text;
+    stats.textContent =
+      `${r.contractions} contraction(s) expanded, ${r.slang} slang word(s) swapped.`;
+  }
+
+  copy.addEventListener("click", () =>
+    copyTextWithFeedback(formalizeWithStats(input.value).text, copy),
+  );
+  input.addEventListener("input", render);
+  render();
+</script>

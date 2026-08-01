@@ -1,0 +1,318 @@
+---
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Watermark</span>
+    <div class="actions">
+      <button class="btn" type="button" data-mode-text>Text</button>
+      <button class="btn" type="button" data-mode-image>Image logo</button>
+    </div>
+    <input class="input" type="text" data-wm-text maxlength="120" placeholder="© Your Name" value="©" />
+    <div class="drop-zone" data-wm-zone style="display:none" tabindex="0" role="button">
+      <input type="file" accept="image/*" data-wm-file hidden />
+      <div class="dz-title">Drop a watermark logo</div>
+      <div class="dz-hint">PNG with transparency works best.</div>
+    </div>
+  </div>
+
+  <div class="drop-zone" data-targets-zone tabindex="0" role="button">
+    <input type="file" accept="image/*" multiple data-targets hidden />
+    <div class="dz-title">Drop the images to watermark</div>
+    <div class="dz-hint">Select or drop several images — nothing uploads.</div>
+  </div>
+
+  <div class="grid" data-controls style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+    <label class="field">
+      <span class="field-label">Position</span>
+      <select class="input" data-position>
+        <option value="br">Bottom right</option>
+        <option value="bl">Bottom left</option>
+        <option value="tr">Top right</option>
+        <option value="tl">Top left</option>
+        <option value="tc">Top center</option>
+        <option value="bc">Bottom center</option>
+        <option value="cc">Center</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">Size: <span data-size-value>10</span>%</span>
+      <input class="input" type="range" min="1" max="40" step="1" value="10" data-size />
+    </label>
+    <label class="field">
+      <span class="field-label">Opacity: <span data-opacity-value>60</span>%</span>
+      <input class="input" type="range" min="5" max="100" step="1" value="60" data-opacity />
+    </label>
+    <label class="field">
+      <span class="field-label">Tile across image</span>
+      <input type="checkbox" data-tile />
+    </label>
+  </div>
+
+  <figure data-preview style="display:none">
+    <figcaption class="field-label" data-label>Preview</figcaption>
+    <img data-out alt="Watermarked preview" />
+  </figure>
+
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-run disabled>Watermark images</button>
+  </div>
+  <output class="output-box" data-status aria-live="polite"></output>
+  <p class="error-text" data-error style="display:none"></p>
+</section>
+
+<style>
+  figure {
+    margin: 0;
+  }
+  figure img {
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+</style>
+
+<script>
+  import { watermarkRect, scaledMarkSize, textWatermarkSize, tileOffsets, type Position } from "./tool.ts";
+  import { loadImageBitmap, canvasToBlob } from "../_lib.ts";
+  import { swapExtension } from "@/lib/files";
+  import { downloadBlob } from "@/lib/download";
+
+  const modeTextBtn = document.querySelector<HTMLButtonElement>("[data-mode-text]")!;
+  const modeImageBtn = document.querySelector<HTMLButtonElement>("[data-mode-image]")!;
+  const wmTextInput = document.querySelector<HTMLInputElement>("[data-wm-text]")!;
+  const wmZone = document.querySelector<HTMLDivElement>("[data-wm-zone]")!;
+  const wmFileInput = document.querySelector<HTMLInputElement>("[data-wm-file]")!;
+  const targetsZone = document.querySelector<HTMLDivElement>("[data-targets-zone]")!;
+  const targetsInput = document.querySelector<HTMLInputElement>("[data-targets]")!;
+  const positionSelect = document.querySelector<HTMLSelectElement>("[data-position]")!;
+  const sizeInput = document.querySelector<HTMLInputElement>("[data-size]")!;
+  const sizeValue = document.querySelector<HTMLSpanElement>("[data-size-value]")!;
+  const opacityInput = document.querySelector<HTMLInputElement>("[data-opacity]")!;
+  const opacityValue = document.querySelector<HTMLSpanElement>("[data-opacity-value]")!;
+  const tileCheck = document.querySelector<HTMLInputElement>("[data-tile]")!;
+  const preview = document.querySelector<HTMLElement>("[data-preview]")!;
+  const outImg = document.querySelector<HTMLImageElement>("[data-out]")!;
+  const label = document.querySelector<HTMLElement>("[data-label]")!;
+  const runBtn = document.querySelector<HTMLButtonElement>("[data-run]")!;
+  const statusEl = document.querySelector<HTMLOutputElement>("[data-status]")!;
+  const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
+
+  let mode: "text" | "image" = "text";
+  let wmBitmap: ImageBitmap | null = null;
+  let targets: File[] = [];
+  let previewUrl = "";
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d")!;
+
+  function setError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+
+  function setStatus(msg: string) {
+    statusEl.textContent = msg;
+  }
+
+  function options() {
+    return {
+      position: positionSelect.value as Position,
+      scale: sizeInput.valueAsNumber / 100,
+      opacity: opacityInput.valueAsNumber / 100,
+      tile: tileCheck.checked,
+    };
+  }
+
+  modeTextBtn.addEventListener("click", () => setMode("text"));
+  modeImageBtn.addEventListener("click", () => setMode("image"));
+
+  function setMode(next: "text" | "image") {
+    mode = next;
+    modeTextBtn.classList.toggle("btn-primary", next === "text");
+    modeImageBtn.classList.toggle("btn-primary", next === "image");
+    wmTextInput.style.display = next === "text" ? "" : "none";
+    wmZone.style.display = next === "image" ? "" : "none";
+    refresh();
+  }
+
+  function wireDropZone(zone: HTMLDivElement, input: HTMLInputElement, onFiles: (files: File[]) => void) {
+    zone.addEventListener("click", () => input.click());
+    zone.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        input.click();
+      }
+    });
+    zone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      zone.classList.add("drag");
+    });
+    zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+    zone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      zone.classList.remove("drag");
+      const files = e.dataTransfer?.files;
+      if (files) onFiles(Array.from(files));
+    });
+  }
+
+  wireDropZone(wmZone, wmFileInput, async (files) => {
+    const file = files[0];
+    if (!file) return;
+    setError("");
+    try {
+      const img = await loadImageBitmap(file);
+      wmBitmap = img.bitmap;
+      setStatus("Logo loaded.");
+      refresh();
+    } catch {
+      setError("Could not read that watermark image.");
+    }
+  });
+  wmFileInput.addEventListener("change", () => {
+    const file = wmFileInput.files?.[0];
+    if (file) {
+      loadImageBitmap(file).then(
+        (img) => {
+          wmBitmap = img.bitmap;
+          setStatus("Logo loaded.");
+          refresh();
+        },
+        () => setError("Could not read that watermark image."),
+      );
+    }
+    wmFileInput.value = "";
+  });
+
+  wireDropZone(targetsZone, targetsInput, (files) => {
+    targets = files.filter((f) => f.type.startsWith("image/"));
+    if (targets.length === 0) {
+      setError("No image files found in that selection.");
+      return;
+    }
+    setError("");
+    setStatus(`${targets.length} image(s) selected.`);
+    refresh();
+  });
+  targetsInput.addEventListener("change", () => {
+    const files = targetsInput.files ? Array.from(targetsInput.files) : [];
+    targets = files.filter((f) => f.type.startsWith("image/"));
+    if (targets.length > 0) {
+      setError("");
+      setStatus(`${targets.length} image(s) selected.`);
+      refresh();
+    }
+    targetsInput.value = "";
+  });
+
+  sizeInput.addEventListener("input", () => {
+    sizeValue.textContent = sizeInput.value;
+    refresh();
+  });
+  opacityInput.addEventListener("input", () => {
+    opacityValue.textContent = opacityInput.value;
+    refresh();
+  });
+  positionSelect.addEventListener("change", refresh);
+  tileCheck.addEventListener("change", refresh);
+  wmTextInput.addEventListener("input", refresh);
+
+  function watermarkReady(): boolean {
+    return mode === "text" ? wmTextInput.value.trim().length > 0 : wmBitmap !== null;
+  }
+
+  async function refresh() {
+    runBtn.disabled = targets.length === 0 || !watermarkReady();
+    if (targets.length === 0) {
+      preview.style.display = "none";
+      return;
+    }
+    setError("");
+    try {
+      const img = await loadImageBitmap(targets[0]);
+      const blob = await renderWatermarked(img.bitmap, img.width, img.height);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(blob);
+      outImg.src = previewUrl;
+      label.textContent = `Preview — ${img.width}×${img.height}, first of ${targets.length}`;
+      preview.style.display = "";
+    } catch {
+      preview.style.display = "none";
+    }
+  }
+
+  function drawWatermark(w: number, h: number) {
+    const { position, scale, opacity, tile } = options();
+    ctx.globalAlpha = opacity;
+    if (mode === "text") {
+      const text = wmTextInput.value.trim();
+      const size = textWatermarkSize(w, h, scale);
+      ctx.font = `700 ${size}px system-ui, sans-serif`;
+      ctx.textBaseline = "top";
+      const tw = ctx.measureText(text).width;
+      ctx.lineWidth = Math.max(2, size / 10);
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "rgba(0,0,0,0.85)";
+      ctx.fillStyle = "#fff";
+      if (tile) {
+        for (const off of tileOffsets(w, h, tw, size, size * 2)) {
+          ctx.strokeText(text, off.x, off.y);
+          ctx.fillText(text, off.x, off.y);
+        }
+      } else {
+        const pos = watermarkRect(w, h, tw, size, position, Math.round(Math.min(w, h) * 0.04));
+        ctx.strokeText(text, pos.x, pos.y);
+        ctx.fillText(text, pos.x, pos.y);
+      }
+    } else if (wmBitmap) {
+      const dim = scaledMarkSize(w, h, wmBitmap.width, wmBitmap.height, scale);
+      if (tile) {
+        for (const off of tileOffsets(w, h, dim.w, dim.h, Math.round(dim.w * 0.5))) {
+          ctx.drawImage(wmBitmap, off.x, off.y, dim.w, dim.h);
+        }
+      } else {
+        const pos = watermarkRect(w, h, dim.w, dim.h, position, Math.round(Math.min(w, h) * 0.04));
+        ctx.drawImage(wmBitmap, pos.x, pos.y, dim.w, dim.h);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  async function renderWatermarked(
+    bitmap: ImageBitmap,
+    width: number,
+    height: number,
+  ): Promise<Blob> {
+    canvas.width = width;
+    canvas.height = height;
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    drawWatermark(width, height);
+    return canvasToBlob(canvas, "image/png");
+  }
+
+  runBtn.addEventListener("click", async () => {
+    if (targets.length === 0 || !watermarkReady()) return;
+    runBtn.disabled = true;
+    setError("");
+    let done = 0;
+    for (const file of targets) {
+      try {
+        const img = await loadImageBitmap(file);
+        const blob = await renderWatermarked(img.bitmap, img.width, img.height);
+        downloadBlob(blob, `wm-${swapExtension(file.name, "png")}`);
+        done++;
+        setStatus(`${done}/${targets.length} watermarked and downloading…`);
+        await new Promise((r) => setTimeout(r, 400));
+      } catch {
+        setError(`Could not process "${file.name}".`);
+        break;
+      }
+    }
+    setStatus(
+      done === targets.length
+        ? `Done — ${done} image(s) watermarked. Browsers may ask before saving many downloads.`
+        : `Stopped after ${done} of ${targets.length}.`,
+    );
+    runBtn.disabled = false;
+  });
+</script>

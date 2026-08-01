@@ -1,0 +1,131 @@
+---
+// mr.xml — Format, validate against XSD, and transform XML with XSLT in the browser.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">XML Input</span>
+    <textarea class="input" rows="8" placeholder="Paste XML here…" data-xml-input></textarea>
+  </div>
+
+  <div class="actions" style="margin-bottom:1rem">
+    <button class="btn btn-primary" data-format>Format</button>
+    <button class="btn" data-copy>Copy</button>
+    <button class="btn" data-download>Download</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+
+  <div class="field">
+    <span class="field-label">XSD Schema (optional)</span>
+    <textarea class="input" rows="6" placeholder="Paste XSD for validation…" data-xsd-input></textarea>
+    <button class="btn" data-validate-xsd style="margin-top:0.5rem">Validate against XSD</button>
+    <div class="error-text" data-xsd-error style="display:none;margin-top:0.5rem"></div>
+    <div class="ok-text" data-xsd-ok style="display:none;margin-top:0.5rem"></div>
+  </div>
+
+  <div class="field" style="margin-top:1rem">
+    <span class="field-label">XSLT Transform (optional)</span>
+    <textarea class="input" rows="6" placeholder="Paste XSLT for transformation…" data-xslt-input></textarea>
+    <button class="btn" data-transform style="margin-top:0.5rem">Transform</button>
+    <div class="error-text" data-xslt-error style="display:none;margin-top:0.5rem"></div>
+  </div>
+
+  <div class="field" style="margin-top:1rem">
+    <span class="field-label">Output <span data-status class="badge-plain"></span></span>
+    <textarea class="input" rows="12" readonly data-output aria-live="polite"></textarea>
+    <div class="error-text" data-error style="display:none;margin-top:0.5rem"></div>
+  </div>
+</section>
+
+<script>
+  import {
+    parseXml,
+    validateXsd,
+    transformXslt,
+    formatXmlString,
+  } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { downloadText } from "@/lib/download";
+
+  const xmlInput = document.querySelector<HTMLTextAreaElement>("[data-xml-input]")!;
+  const xsdInput = document.querySelector<HTMLTextAreaElement>("[data-xsd-input]")!;
+  const xsltInput = document.querySelector<HTMLTextAreaElement>("[data-xslt-input]")!;
+  const output = document.querySelector<HTMLTextAreaElement>("[data-output]")!;
+  const status = document.querySelector<HTMLElement>("[data-status]")!;
+  const errorEl = document.querySelector<HTMLElement>("[data-error]")!;
+  const xsdErrorEl = document.querySelector<HTMLElement>("[data-xsd-error]")!;
+  const xsdOkEl = document.querySelector<HTMLElement>("[data-xsd-ok]")!;
+  const xsltErrorEl = document.querySelector<HTMLElement>("[data-xslt-error]")!;
+
+  const formatBtn = document.querySelector<HTMLButtonElement>("[data-format]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const validateXsdBtn = document.querySelector<HTMLButtonElement>("[data-validate-xsd]")!;
+  const transformBtn = document.querySelector<HTMLButtonElement>("[data-transform]")!;
+
+  formatBtn.addEventListener("click", () => {
+    errorEl.style.display = "none";
+    const result = formatXmlString(xmlInput.value);
+    if (result.valid) {
+      output.value = result.formatted ?? "";
+      status.textContent = "Formatted";
+      status.className = "badge-ok";
+    } else {
+      status.textContent = "Invalid XML";
+      status.className = "badge";
+      errorEl.style.display = "block";
+      errorEl.textContent = result.error?.message ?? "Parse error";
+    }
+  });
+
+  copyBtn.addEventListener("click", () => copyTextWithFeedback(output.value, copyBtn));
+  downloadBtn.addEventListener("click", () => downloadText(output.value, "formatted.xml", "application/xml"));
+  clearBtn.addEventListener("click", () => {
+    xmlInput.value = "";
+    xsdInput.value = "";
+    xsltInput.value = "";
+    output.value = "";
+    status.textContent = "";
+    status.className = "badge-plain";
+    errorEl.style.display = "none";
+    xsdErrorEl.style.display = "none";
+    xsdOkEl.style.display = "none";
+    xsltErrorEl.style.display = "none";
+  });
+
+  validateXsdBtn.addEventListener("click", () => {
+    xsdErrorEl.style.display = "none";
+    xsdOkEl.style.display = "none";
+    if (!xsdInput.value.trim()) {
+      xsdErrorEl.style.display = "block";
+      xsdErrorEl.textContent = "Please provide an XSD schema";
+      return;
+    }
+    const result = validateXsd(xmlInput.value, xsdInput.value);
+    if (result.valid) {
+      xsdOkEl.style.display = "block";
+      xsdOkEl.textContent = "XML is valid against XSD (basic check)";
+    } else {
+      xsdErrorEl.style.display = "block";
+      xsdErrorEl.textContent = result.errors.join("\n");
+    }
+  });
+
+  transformBtn.addEventListener("click", () => {
+    xsltErrorEl.style.display = "none";
+    if (!xsltInput.value.trim()) {
+      xsltErrorEl.style.display = "block";
+      xsltErrorEl.textContent = "Please provide an XSLT stylesheet";
+      return;
+    }
+    const result = transformXslt(xmlInput.value, xsltInput.value);
+    if (result.error) {
+      xsltErrorEl.style.display = "block";
+      xsltErrorEl.textContent = result.error;
+    } else {
+      output.value = result.output;
+      status.textContent = "Transformed";
+      status.className = "badge-ok";
+    }
+  });
+</script>
