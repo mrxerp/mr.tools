@@ -1,0 +1,19 @@
+---
+// Copy — a small "Copy" button that copies `text` and flashes feedback.
+interface Props {
+  text: string;
+  label?: string;
+}
+const { text, label = "Copy" } = Astro.props;
+---
+<button type="button" class="btn" data-copy={text}>{label}</button>
+
+<script>
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  for (const btn of document.querySelectorAll<HTMLButtonElement>("button[data-copy]")) {
+    btn.addEventListener("click", () => {
+      copyTextWithFeedback(btn.dataset.copy ?? "", btn);
+    });
+  }
+</script>

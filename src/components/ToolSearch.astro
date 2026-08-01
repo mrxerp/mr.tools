@@ -1,0 +1,131 @@
+---
+// ToolSearch — instant, client-side search across all tools.
+// Every <div data-search-mount> is mounted by the single processed script
+// below, so the header and home hero instances bind independently.
+interface Props {
+  size?: "sm" | "lg";
+}
+const { size = "sm" } = Astro.props;
+---
+<div class="search-wrap" data-search-mount>
+  <input
+    class:list={["search-input", size === "lg" && "search-input-lg"]}
+    type="search"
+    placeholder="Search tiny tools…"
+    aria-label="Search tools"
+    autocomplete="off"
+    spellcheck="false"
+    data-search-input
+  />
+  <span class="search-kbd" data-search-kbd>/</span>
+  <div class="search-results" data-search-results role="listbox"></div>
+</div>
+
+<script>
+  import type { SearchHit } from "@/data/generated";
+  import { searchIndex } from "@/data/generated";
+
+  const index: SearchHit[] = searchIndex;
+
+  function escapeHtml(s: string): string {
+    return s.replace(/[&<>"']/g, (c) =>
+      c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",
+    );
+  }
+
+  function score(hit: SearchHit, q: string): number {
+    const name = hit.name.toLowerCase();
+    const tagline = hit.tagline.toLowerCase();
+    const tags = hit.tags.join(" ").toLowerCase();
+    const family = hit.family.toLowerCase();
+    if (name === q) return 100;
+    if (name.startsWith(q)) return 90;
+    if (name.includes(q)) return 70;
+    if (family.includes(q)) return 45;
+    if (tagline.includes(q)) return 35;
+    if (tags.includes(q)) return 25;
+    return 0;
+  }
+
+  function mount(root: HTMLElement) {
+    const input = root.querySelector<HTMLInputElement>("[data-search-input]");
+    const results = root.querySelector<HTMLDivElement>("[data-search-results]");
+    if (!input || !results) return;
+    const inp: HTMLInputElement = input;
+    const res: HTMLDivElement = results;
+
+    function close() {
+      res.classList.remove("open");
+    }
+
+    function run() {
+      const q = inp.value.trim().toLowerCase();
+      if (!q) return close();
+      const ranked = index
+        .map((hit) => ({ hit, s: score(hit, q) }))
+        .filter((r) => r.s > 0)
+        .sort((a, b) => b.s - a.s)
+        .slice(0, 8);
+      if (ranked.length === 0) {
+        res.innerHTML = `<div class="search-hit"><span class="hit-name">No match for “${escapeHtml(inp.value.trim())}”</span></div>`;
+        res.classList.add("open");
+        return;
+      }
+      res.innerHTML = "";
+      for (const { hit } of ranked) {
+        const a = document.createElement("a");
+        a.className = "search-hit";
+        a.href = hit.href;
+        a.setAttribute("role", "option");
+        a.innerHTML = `<span class="hit-name">${escapeHtml(hit.name)}</span> <span class="hit-meta">${escapeHtml(hit.family)} · ${escapeHtml(hit.tagline)}</span>`;
+        res.appendChild(a);
+      }
+      res.classList.add("open");
+      (res.querySelector("a") as HTMLAnchorElement | null)?.classList.add("active");
+    }
+
+    inp.addEventListener("input", run);
+    inp.addEventListener("focus", run);
+
+    inp.addEventListener("keydown", (e) => {
+      const items = Array.from(res.querySelectorAll<HTMLAnchorElement>("a"));
+      const idx = items.findIndex((el) => el.classList.contains("active"));
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (items.length === 0) return;
+        items[idx]?.classList.remove("active");
+        const next = e.key === "ArrowDown" ? (idx + 1) % items.length : (idx - 1 + items.length) % items.length;
+        items[next].classList.add("active");
+        items[next].scrollIntoView({ block: "nearest" });
+      } else if (e.key === "Enter") {
+        const active = items[idx];
+        if (active) window.location.href = active.href;
+      } else if (e.key === "Escape") {
+        close();
+        inp.blur();
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!(e.target instanceof Node)) return;
+      if (!res.contains(e.target) && e.target !== inp) close();
+    });
+  }
+
+  let slashBound = false;
+  for (const root of document.querySelectorAll<HTMLElement>("[data-search-mount]")) {
+    mount(root);
+    if (!slashBound) {
+      slashBound = true;
+      document.addEventListener("keydown", (e) => {
+        const t = e.target as HTMLElement | null;
+        const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+        const input = root.querySelector<HTMLInputElement>("[data-search-input]");
+        if (e.key === "/" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey && input) {
+          e.preventDefault();
+          input.focus();
+        }
+      });
+    }
+  }
+</script>

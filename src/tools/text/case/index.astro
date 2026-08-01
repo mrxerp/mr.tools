@@ -1,0 +1,45 @@
+---
+// mr case — live text case converter. Instant: no submit button.
+import { toCases } from "./tool.ts";
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Text</span>
+    <textarea class="input" rows="6" placeholder="Paste or type text…" data-input></textarea>
+  </label>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr))" data-results></div>
+</section>
+
+<script>
+  import { toCases } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]");
+  const results = document.querySelector<HTMLDivElement>("[data-results]");
+  if (!input || !results) throw new Error("mr case mount failed");
+
+  function render() {
+    results.innerHTML = "";
+    for (const c of toCases(input.value)) {
+      const card = document.createElement("div");
+      card.className = "output-box";
+      card.style.margin = "0";
+      const name = document.createElement("div");
+      name.className = "field-label";
+      name.textContent = c.name;
+      const pre = document.createElement("div");
+      pre.textContent = c.text;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.textContent = "Copy";
+      btn.style.marginTop = "0.5rem";
+      btn.addEventListener("click", () => copyTextWithFeedback(c.text, btn));
+      card.append(name, pre, btn);
+      results.appendChild(card);
+    }
+  }
+
+  input.addEventListener("input", render);
+  render();
+</script>

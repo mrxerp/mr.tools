@@ -1,0 +1,62 @@
+---
+// Base — shared document shell: head, header with brand + search, footer, SW.
+import "@/styles/base.css";
+import ToolSearch from "@/components/ToolSearch.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  /** Absolute path for the canonical URL and OG tags, e.g. "/tools/pdf/merge/". */
+  path?: string;
+}
+const { title, description, path = "/" } = Astro.props;
+const site = new URL(Astro.site ?? "https://mr.tools");
+const canonical = new URL(path, site);
+const pageTitle = path === "/" ? title : `${title} — mr.tools`;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{pageTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <meta name="theme-color" content="#5a5bd9" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="mr.tools" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <link rel="manifest" href="/manifest.webmanifest" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container">
+        <a class="brand" href="/">
+          <span class="brand-mark">mr</span>
+          <span class="brand-name">mr.tools</span>
+        </a>
+        <ToolSearch />
+      </div>
+    </header>
+    <main>
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <div class="container">
+        <span>mr.tools — tiny tools that run entirely in your browser. Nothing leaves your device.</span>
+        <span>Privacy first · Offline ready</span>
+      </div>
+    </footer>
+
+    <script>
+      if ("serviceWorker" in navigator && import.meta.env.PROD) {
+        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      }
+    </script>
+  </body>
+</html>

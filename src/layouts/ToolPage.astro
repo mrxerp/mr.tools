@@ -1,0 +1,51 @@
+---
+// ToolPage — identical chrome for every tool page:
+// breadcrumb, privacy badge, title block, the tool stage, then related tools.
+import type { ToolRecord } from "@/types/tool";
+import Base from "./Base.astro";
+import Icon from "@/components/Icon.astro";
+import ToolCard from "@/components/ToolCard.astro";
+import { relatedFor } from "@/data/generated";
+
+interface Props {
+  tool: ToolRecord;
+}
+const { tool } = Astro.props;
+const familyPath = tool.familyHref;
+const related = relatedFor(tool, 3);
+---
+<Base
+  title={`${tool.name} — ${tool.familyName}`}
+  description={tool.description}
+  path={tool.href}
+>
+  <div class="container">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">Home</a>
+      <span class="sep">/</span>
+      <a href={familyPath}>{tool.familyName}</a>
+      <span class="sep">/</span>
+      <span>{tool.name}</span>
+    </nav>
+
+    <div class="badge-row">
+      <span class="badge"><Icon name="check" size={13} /> Runs in your browser — nothing uploads</span>
+      <span class="badge badge-plain">Offline ready</span>
+      <span class="badge badge-plain">{tool.difficulty}</span>
+    </div>
+
+    <div class="page-head">
+      <h1>{tool.name}</h1>
+      <p class="tagline">{tool.tagline}</p>
+    </div>
+
+    <slot />
+  </div>
+
+  <div class="container">
+    <h2 class="section-title">Related tools</h2>
+    <div class="grid">
+      {related.map((t) => <ToolCard tool={t} />)}
+    </div>
+  </div>
+</Base>

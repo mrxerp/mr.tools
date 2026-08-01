@@ -1,0 +1,20 @@
+---
+// ToolCard — one tool link in a grid.
+import type { ToolRecord } from "@/types/tool";
+import Icon from "./Icon.astro";
+
+interface Props {
+  tool: ToolRecord;
+}
+const { tool } = Astro.props;
+---
+<a class="card" href={tool.href}>
+  <div class="card-top">
+    <span class="card-icon"><Icon name={tool.icon} size={18} /></span>
+    <span>
+      <span class="card-name">{tool.name}</span>
+      <span class="card-family">{tool.familyName}</span>
+    </span>
+  </div>
+  <p class="card-tagline">{tool.tagline}</p>
+</a>

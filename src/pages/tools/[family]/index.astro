@@ -1,0 +1,45 @@
+---
+// Family hub — lists every tool in one family.
+import { families, tools } from "@/data/generated";
+import Base from "@/layouts/Base.astro";
+import Icon from "@/components/Icon.astro";
+import ToolCard from "@/components/ToolCard.astro";
+
+export function getStaticPaths() {
+  return families.map((family) => ({
+    params: { family: family.id },
+    props: { family },
+  }));
+}
+
+const { family } = Astro.props;
+const familyTools = tools
+  .filter((t) => t.familyHref === `/tools/${family.id}/`)
+  .sort((a, b) => a.name.localeCompare(b.name));
+---
+<Base
+  title={family.name}
+  description={family.description}
+  path={`/tools/${family.id}/`}
+>
+  <div class="container">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+      <a href="/">Home</a>
+      <span class="sep">/</span>
+      <span>{family.name}</span>
+    </nav>
+
+    <div class="page-head family-head">
+      <span class="card-icon"><Icon name={family.icon} size={24} /></span>
+      <div>
+        <h1>{family.name}</h1>
+        <p class="tagline">{family.tagline}</p>
+      </div>
+    </div>
+    <p class="prose">{family.description}</p>
+
+    <div class="grid">
+      {familyTools.map((t) => <ToolCard tool={t} />)}
+    </div>
+  </div>
+</Base>

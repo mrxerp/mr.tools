@@ -1,0 +1,30 @@
+{
+  "name": "mr-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "mr tools — tiny browser-only tools that run entirely on the client.",
+  "scripts": {
+    "predev": "node scripts/build-tool-index.mjs",
+    "dev": "astro dev",
+    "prebuild": "node scripts/build-tool-index.mjs && node scripts/make-icons.mjs",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "test": "node scripts/run-tests.mjs",
+    "new": "node scripts/mr-tool-new.mjs",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "dependencies": {
+    "astro": "^5.0.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.4",
+    "@types/node": "^22.10.0",
+    "@types/qrcode": "^1.5.5",
+    "typescript": "^5.7.0"
+  }
+}

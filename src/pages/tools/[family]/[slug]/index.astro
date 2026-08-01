@@ -1,0 +1,26 @@
+---
+// Tool route — renders every tool page through the shared ToolPage chrome.
+// The tool's own body lives at src/tools/<family>/<slug>/index.astro.
+import { tools } from "@/data/generated";
+import ToolPage from "@/layouts/ToolPage.astro";
+
+const stages = import.meta.glob<{ default: any }>("../../../../tools/*/*/index.astro");
+
+export function getStaticPaths() {
+  return tools.map((tool) => ({
+    params: { family: tool.href.split("/")[2], slug: tool.href.split("/")[3] },
+    props: { tool },
+  }));
+}
+
+const { tool } = Astro.props;
+const family = tool.href.split("/")[2];
+const slug = tool.href.split("/")[3];
+const key = `../../../../tools/${family}/${slug}/index.astro`;
+const loader = stages[key];
+if (!loader) throw new Error(`[mr] missing tool stage for ${key}`);
+const { default: Stage } = await loader();
+---
+<ToolPage tool={tool}>
+  <Stage />
+</ToolPage>

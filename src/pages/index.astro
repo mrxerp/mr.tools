@@ -1,0 +1,62 @@
+---
+// Home — search-first landing page.
+import Base from "@/layouts/Base.astro";
+import Icon from "@/components/Icon.astro";
+import ToolCard from "@/components/ToolCard.astro";
+import ToolSearch from "@/components/ToolSearch.astro";
+import { families, tools } from "@/data/generated";
+
+const counts = new Map<string, number>();
+for (const t of tools) {
+  const fid = t.href.split("/")[2];
+  counts.set(fid, (counts.get(fid) ?? 0) + 1);
+}
+const featured = [...tools].slice(0, 8);
+const total = tools.length;
+---
+<Base
+  title="mr.tools — tiny tools that run in your browser"
+  description="mr.tools is a growing library of tiny tools — PDF, text, image, code and more — that run entirely in your browser. Private by design: nothing ever uploads."
+  path="/"
+>
+  <div class="container">
+    <section class="hero">
+      <h1>mr. tiny tools.</h1>
+      <p class="lede">
+        {total} small tools that run entirely in your browser. Nothing uploads,
+        nothing tracks you, and they work offline.
+      </p>
+      <div class="hero-search">
+        <ToolSearch size="lg" />
+      </div>
+      <div class="hero-badges">
+        <span class="badge"><Icon name="eye" size={13} /> Privacy first</span>
+        <span class="badge badge-plain">Works offline</span>
+        <span class="badge badge-plain">Free forever</span>
+      </div>
+    </section>
+
+    <h2 class="section-title">Browse by family</h2>
+    <div class="grid">
+      {
+        families.map((f) => (
+          <a class="card" href={`/tools/${f.id}/`}>
+            <div class="card-top">
+              <span class="card-icon"><Icon name={f.icon} size={18} /></span>
+              <span>
+                <span class="card-name">{f.name}</span>
+                <span class="card-family">{counts.get(f.id) ?? 0} tools</span>
+              </span>
+            </div>
+            <p class="card-tagline">{f.tagline}</p>
+          </a>
+        ))
+      }
+    </div>
+
+    <h2 class="section-title">Fresh off the workbench</h2>
+    <div class="grid">
+      {featured.map((t) => <ToolCard tool={t} />)}
+    </div>
+  </div>
+</Base>
