@@ -21,7 +21,7 @@ const total = tools.length;
 >
   <div class="container">
     <section class="hero">
-      <h1>mr. tiny tools.</h1>
+      <h1>mr.tools</h1>
       <p class="lede">
         {total} small tools that run entirely in your browser. Nothing uploads,
         nothing tracks you, and they work offline.
@@ -45,7 +45,7 @@ const total = tools.length;
               <span class="card-icon"><Icon name={f.icon} size={18} /></span>
               <span>
                 <span class="card-name">{f.name}</span>
-                <span class="card-family">{counts.get(f.id) ?? 0} tools</span>
+                <span class="card-family">{counts.get(f.id) ?? 0} tool{counts.get(f.id) === 1 ? "" : "s"}</span>
               </span>
             </div>
             <p class="card-tagline">{f.tagline}</p>
