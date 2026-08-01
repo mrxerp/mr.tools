@@ -12,6 +12,7 @@
     "preview": "astro preview",
     "check": "astro check",
     "test": "node scripts/run-tests.mjs",
+    "smoke": "node scripts/browser-smoke.cjs",
     "new": "node scripts/mr-tool-new.mjs",
     "icons": "node scripts/make-icons.mjs"
   },
