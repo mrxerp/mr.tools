@@ -1,0 +1,90 @@
+---
+// mr age — age breakdown, date diff, and next birthday countdown.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+    <label class="field">
+      <span class="field-label">Birth date</span>
+      <input class="input" type="date" data-birth />
+    </label>
+    <label class="field">
+      <span class="field-label">As of</span>
+      <input class="input" type="date" data-asof />
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn" type="button" data-today>As of today</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { calculateAge, parseDateInput } from "./tool.ts";
+
+  const birthMaybe = document.querySelector<HTMLInputElement>("[data-birth]");
+  const asofMaybe = document.querySelector<HTMLInputElement>("[data-asof]");
+  const todayBtnMaybe = document.querySelector<HTMLButtonElement>("[data-today]");
+  const outMaybe = document.querySelector<HTMLOutputElement>("[data-out]");
+  if (!birthMaybe || !asofMaybe || !todayBtnMaybe || !outMaybe) throw new Error("mr age mount failed");
+  const birth = birthMaybe;
+  const asof = asofMaybe;
+  const todayBtn = todayBtnMaybe;
+  const out = outMaybe;
+
+  function localDateInput(d: Date): string {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  function plural(n: number, word: string): string {
+    return `${n} ${word}${n === 1 ? "" : "s"}`;
+  }
+
+  function setMessage(text: string, error = false) {
+    out.innerHTML = "";
+    const el = document.createElement("div");
+    if (error) el.className = "error-text";
+    el.textContent = text;
+    out.appendChild(el);
+  }
+
+  function render() {
+    const birthDate = parseDateInput(birth.value);
+    const asofDate = asof.value ? parseDateInput(asof.value) : new Date();
+    if (!birth.value) {
+      setMessage("Enter a birth date to see the age breakdown.");
+      return;
+    }
+    const result = calculateAge(birthDate, asofDate);
+    if (!result.ok) {
+      setMessage(
+        result.reason === "future" ? "That birth date is in the future." : "Enter a valid birth date.",
+        true,
+      );
+      return;
+    }
+    out.innerHTML = "";
+    const lines = [
+      `Age: ${plural(result.years, "year")}, ${plural(result.months, "month")}, ${plural(result.days, "day")}`,
+      result.nextBirthdayDays === 0
+        ? "Next birthday: today!"
+        : `Next birthday: in ${plural(result.nextBirthdayDays, "day")}`,
+      `Days between these dates: ${plural(result.totalDays, "day")}`,
+    ];
+    for (const line of lines) {
+      const el = document.createElement("div");
+      el.textContent = line;
+      out.appendChild(el);
+    }
+  }
+
+  birth.addEventListener("input", render);
+  asof.addEventListener("input", render);
+  todayBtn.addEventListener("click", () => {
+    asof.value = localDateInput(new Date());
+    render();
+  });
+
+  asof.value = localDateInput(new Date());
+  render();
+</script>

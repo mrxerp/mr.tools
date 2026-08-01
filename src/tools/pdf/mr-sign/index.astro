@@ -1,0 +1,178 @@
+---
+// mr sign — draw a signature, drop a PDF, place the image on a page.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Draw your signature</span>
+    <canvas class="pad" data-pad width="560" height="200" aria-label="Signature pad"></canvas>
+    <span class="pad-hint">Draw with mouse, pen, or finger.</span>
+  </label>
+  <div class="actions">
+    <button class="btn" type="button" data-clear>Clear</button>
+  </div>
+  <div class="drop-zone" data-zone role="button" tabindex="0">
+    <div class="dz-title">Drop a PDF here or click to browse</div>
+    <div class="dz-hint">Runs locally — nothing uploads</div>
+    <input type="file" accept="application/pdf" hidden data-input />
+  </div>
+  <label class="field">
+    <span class="field-label">Page to sign (default: last)</span>
+    <input class="input" type="number" min="1" value="1" data-page />
+  </label>
+  <div class="actions">
+    <button class="btn btn-primary" data-run disabled>Sign</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<style>
+  .pad {
+    width: 100%;
+    max-width: 560px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+    background:
+      linear-gradient(135deg, #f5f5f5 25%, transparent 25%) 0 0/14px 14px,
+      linear-gradient(225deg, #f5f5f5 25%, transparent 25%) 0 0/14px 14px,
+      linear-gradient(315deg, #f5f5f5 25%, transparent 25%) 7px 0/14px 14px,
+      linear-gradient(45deg, #f5f5f5 25%, transparent 25%) 7px 0/14px 14px;
+    background-color: #fff;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  .pad-hint {
+    display: block;
+    color: var(--muted);
+    font-size: 0.82rem;
+    margin-top: 0.35rem;
+  }
+</style>
+
+<script>
+  import { signPdf } from "./tool.ts";
+  import { readFileAsArrayBuffer, fileNameOf } from "@/lib/files";
+  import { downloadArrayBuffer } from "@/lib/download";
+
+  const pad = document.querySelector<HTMLCanvasElement>("[data-pad]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const input = document.querySelector<HTMLInputElement>("[data-input]")!;
+  const pageInput = document.querySelector<HTMLInputElement>("[data-page]")!;
+  const runBtn = document.querySelector<HTMLButtonElement>("[data-run]")!;
+  const out = document.querySelector<HTMLElement>("[data-out]")!;
+  if (!pad || !clearBtn || !zone || !input || !pageInput || !runBtn || !out)
+    throw new Error("mr sign mount failed");
+
+  const ctx = pad.getContext("2d")!;
+  if (!ctx) throw new Error("canvas 2d unavailable");
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#111";
+
+  let drawing = false;
+  let file: File | null = null;
+
+  function canvasPos(e: PointerEvent) {
+    const r = pad.getBoundingClientRect();
+    return {
+      x: (e.clientX - r.left) * (pad.width / r.width),
+      y: (e.clientY - r.top) * (pad.height / r.height),
+    };
+  }
+
+  function strokeTo(p: { x: number; y: number }) {
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+  }
+
+  pad.addEventListener("pointerdown", (e) => {
+    drawing = true;
+    pad.setPointerCapture(e.pointerId);
+    const p = canvasPos(e);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+  });
+  pad.addEventListener("pointermove", (e) => {
+    if (drawing) strokeTo(canvasPos(e));
+  });
+  pad.addEventListener("pointerup", () => {
+    drawing = false;
+  });
+  pad.addEventListener("pointercancel", () => {
+    drawing = false;
+  });
+
+  clearBtn.addEventListener("click", () => {
+    ctx.clearRect(0, 0, pad.width, pad.height);
+  });
+
+  function signatureBlank(): boolean {
+    const data = ctx.getImageData(0, 0, pad.width, pad.height).data;
+    for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) return false;
+    return true;
+  }
+
+  function pick(f: File | undefined) {
+    if (!f) return;
+    file = f;
+    runBtn.disabled = false;
+    out.textContent = `${fileNameOf(f)} — ready to sign.`;
+  }
+
+  zone.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => pick(input.files?.[0]));
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    pick(e.dataTransfer?.files?.[0]);
+  });
+
+  runBtn.addEventListener("click", async () => {
+    if (!file) return;
+    const f = file;
+    if (signatureBlank()) {
+      out.textContent = "";
+      const e = document.createElement("div");
+      e.className = "error-text";
+      e.textContent = "Draw a signature first.";
+      out.append(e);
+      return;
+    }
+    runBtn.disabled = true;
+    out.textContent = "Signing…";
+    try {
+      const png = pad.toDataURL("image/png");
+      const page = Number(pageInput.value) || 1;
+      const data = await signPdf(await readFileAsArrayBuffer(f), png, { page });
+      out.textContent = "";
+      const dl = document.createElement("button");
+      dl.type = "button";
+      dl.className = "btn btn-primary";
+      dl.textContent = "Download signed PDF";
+      dl.addEventListener("click", () =>
+        downloadArrayBuffer(
+          data,
+          fileNameOf(f).replace(/\.pdf$/i, "") + "-signed.pdf",
+          "application/pdf",
+        ),
+      );
+      out.append(dl);
+    } catch (err) {
+      out.textContent = "";
+      const e = document.createElement("div");
+      e.className = "error-text";
+      e.textContent = err instanceof Error ? err.message : String(err);
+      out.append(e);
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+</script>

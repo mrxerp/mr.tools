@@ -1,0 +1,339 @@
+---
+// mr redact — preview pages with pdf.js, drag to mark regions, paint ink over them.
+---
+<section class="stage">
+  <div class="drop-zone" data-zone role="button" tabindex="0">
+    <div class="dz-title">Drop a PDF here or click to browse</div>
+    <div class="dz-hint">Runs locally — nothing uploads</div>
+    <input type="file" accept="application/pdf" hidden data-input />
+  </div>
+  <div class="preview" data-preview hidden>
+    <div class="actions">
+      <button class="btn" type="button" data-prev disabled>Prev</button>
+      <span class="page-label" data-page-label>Page 1 / 1</span>
+      <button class="btn" type="button" data-next disabled>Next</button>
+      <span class="drag-hint">Drag across the page to mark a region to black out.</span>
+    </div>
+    <div class="canvas-wrap">
+      <canvas data-render></canvas>
+      <canvas data-overlay></canvas>
+    </div>
+  </div>
+  <div class="rect-list" data-rects hidden>
+    <h3>Regions to redact</h3>
+    <ul data-rect-list></ul>
+    <div class="actions">
+      <button class="btn" type="button" data-clear>Clear all</button>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" data-run disabled>Redact</button>
+  </div>
+  <p class="honest">This paints opaque ink over the region (visual redaction). The underlying text can still be recovered from the file, so treat it as hiding, not secure removal.</p>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<style>
+  .canvas-wrap {
+    position: relative;
+    width: 100%;
+    margin-top: 0.8rem;
+    overflow-x: auto;
+  }
+  .canvas-wrap canvas {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+  .canvas-wrap [data-render] {
+    position: relative;
+    z-index: 1;
+  }
+  .canvas-wrap [data-overlay] {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  .drag-hint {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-left: 0.4rem;
+  }
+  .page-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  .rect-list h3 {
+    margin: 1rem 0 0.4rem;
+  }
+  .rect-list ul {
+    margin: 0;
+    padding-left: 1.2rem;
+  }
+  .rect-list li {
+    margin-bottom: 0.25rem;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+  }
+  .honest {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin: 0.8rem 0 0;
+  }
+</style>
+
+<script>
+  import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+  import { redactPdf } from "./tool.ts";
+  import { fileNameOf } from "@/lib/files";
+  import { downloadArrayBuffer } from "@/lib/download";
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+    "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+    import.meta.url,
+  ).toString();
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const preview = document.querySelector<HTMLDivElement>("[data-preview]")!;
+  const renderCanvas = document.querySelector<HTMLCanvasElement>("[data-render]")!;
+  const overlay = document.querySelector<HTMLCanvasElement>("[data-overlay]")!;
+  const prevBtn = document.querySelector<HTMLButtonElement>("[data-prev]")!;
+  const nextBtn = document.querySelector<HTMLButtonElement>("[data-next]")!;
+  const pageLabel = document.querySelector<HTMLSpanElement>("[data-page-label]")!;
+  const rectsBox = document.querySelector<HTMLDivElement>("[data-rects]")!;
+  const rectList = document.querySelector<HTMLUListElement>("[data-rect-list]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const runBtn = document.querySelector<HTMLButtonElement>("[data-run]")!;
+  const out = document.querySelector<HTMLElement>("[data-out]")!;
+  if (
+    !zone || !input || !preview || !renderCanvas || !overlay || !prevBtn || !nextBtn ||
+    !pageLabel || !rectsBox || !rectList || !clearBtn || !runBtn || !out
+  ) {
+    throw new Error("mr redact mount failed");
+  }
+
+  const renderCtx = renderCanvas.getContext("2d")!;
+  const overlayCtx = overlay.getContext("2d")!;
+  if (!renderCtx || !overlayCtx) throw new Error("canvas 2d unavailable");
+
+  interface Rect {
+    page: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }
+
+  let file: File | null = null;
+  let bytes: ArrayBuffer | null = null;
+  let pdf: pdfjsLib.PDFDocumentProxy | null = null;
+  let pageNo = 1;
+  let viewport: pdfjsLib.PageViewport | null = null;
+  let renderTask: pdfjsLib.RenderTask | null = null;
+  const rects: Rect[] = [];
+
+  function pick(f: File | undefined) {
+    if (!f) return;
+    file = f;
+    runBtn.disabled = false;
+    out.textContent = "Loading preview…";
+    f.arrayBuffer().then(async (buf) => {
+      bytes = buf;
+      rects.length = 0;
+      renderRectsList();
+      pdf?.destroy();
+      pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+      pageNo = 1;
+      preview.hidden = false;
+      await renderPage();
+    }).catch((err) => {
+      out.textContent = "";
+      const e = document.createElement("div");
+      e.className = "error-text";
+      e.textContent = err instanceof Error ? err.message : String(err);
+      out.append(e);
+    });
+  }
+
+  zone.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => pick(input.files?.[0]));
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    pick(e.dataTransfer?.files?.[0]);
+  });
+
+  async function renderPage() {
+    if (!pdf) return;
+    renderTask?.cancel();
+    const pdfPage = await pdf.getPage(pageNo);
+    const base = pdfPage.getViewport({ scale: 1 });
+    const scale = Math.min(2, 800 / base.width);
+    viewport = pdfPage.getViewport({ scale });
+    renderCanvas.width = viewport.width;
+    renderCanvas.height = viewport.height;
+    overlay.width = viewport.width;
+    overlay.height = viewport.height;
+    renderTask = pdfPage.render({ canvasContext: renderCtx, viewport });
+    await renderTask.promise;
+    pageLabel.textContent = `Page ${pageNo} / ${pdf.numPages}`;
+    prevBtn.disabled = pageNo <= 1;
+    nextBtn.disabled = pageNo >= pdf.numPages;
+    rectsBox.hidden = rects.length === 0;
+    drawOverlay();
+  }
+
+  prevBtn.addEventListener("click", async () => {
+    if (!pdf) return;
+    pageNo = Math.max(1, pageNo - 1);
+    await renderPage();
+  });
+  nextBtn.addEventListener("click", async () => {
+    if (!pdf) return;
+    pageNo = Math.min(pdf.numPages, pageNo + 1);
+    await renderPage();
+  });
+
+  function pxToPdf(px: number, py: number): { x: number; y: number } {
+    if (!viewport) return { x: 0, y: 0 };
+    return {
+      x: px / viewport.scale,
+      y: (viewport.height - py) / viewport.scale,
+    };
+  }
+
+  function drawOverlay() {
+    if (!overlayCtx) return;
+    overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+    for (const rect of rectsForPage(pageNo)) {
+      strokeRectPdf(rect, "#c0392b");
+    }
+  }
+
+  function strokeRectPdf(rect: Rect, color: string) {
+    if (!viewport || !overlayCtx) return;
+    const x = rect.x * viewport.scale;
+    const y = viewport.height - (rect.y + rect.height) * viewport.scale;
+    overlayCtx.strokeStyle = color;
+    overlayCtx.lineWidth = 2;
+    overlayCtx.setLineDash([6, 4]);
+    overlayCtx.strokeRect(x, y, rect.width * viewport.scale, rect.height * viewport.scale);
+    overlayCtx.setLineDash([]);
+  }
+
+  function rectsForPage(page: number): Rect[] {
+    return rects.filter((r) => r.page === page);
+  }
+
+  function rectFromPdfPoints(a: { x: number; y: number }, b: { x: number; y: number }): Rect {
+    return {
+      page: pageNo,
+      x: Math.min(a.x, b.x),
+      y: Math.min(a.y, b.y),
+      width: Math.abs(b.x - a.x),
+      height: Math.abs(b.y - a.y),
+    };
+  }
+
+  let dragStart: { x: number; y: number } | null = null;
+
+  overlay.addEventListener("pointerdown", (e) => {
+    const r = overlay.getBoundingClientRect();
+    const px = (e.clientX - r.left) * (overlay.width / r.width);
+    const py = (e.clientY - r.top) * (overlay.height / r.height);
+    dragStart = pxToPdf(px, py);
+    overlay.setPointerCapture(e.pointerId);
+  });
+  overlay.addEventListener("pointermove", (e) => {
+    if (!dragStart) return;
+    const r = overlay.getBoundingClientRect();
+    const px = (e.clientX - r.left) * (overlay.width / r.width);
+    const py = (e.clientY - r.top) * (overlay.height / r.height);
+    overlayCtx?.clearRect(0, 0, overlay.width, overlay.height);
+    for (const rect of rectsForPage(pageNo)) strokeRectPdf(rect, "#c0392b");
+    strokeRectPdf(rectFromPdfPoints(dragStart, pxToPdf(px, py)), "#c0392b");
+  });
+  overlay.addEventListener("pointerup", (e) => {
+    if (!dragStart) return;
+    const r = overlay.getBoundingClientRect();
+    const px = (e.clientX - r.left) * (overlay.width / r.width);
+    const py = (e.clientY - r.top) * (overlay.height / r.height);
+    const rect = rectFromPdfPoints(dragStart, pxToPdf(px, py));
+    dragStart = null;
+    if (rect.width > 2 && rect.height > 2) {
+      rects.push(rect);
+      renderRectsList();
+    }
+    drawOverlay();
+  });
+
+  function renderRectsList() {
+    rectsBox.hidden = rects.length === 0;
+    rectList.textContent = "";
+    rects.forEach((rect, i) => {
+      const li = document.createElement("li");
+      li.append(
+        `Page ${rect.page} — x ${rect.x.toFixed(1)}, y ${rect.y.toFixed(1)}, ${rect.width.toFixed(1)} × ${rect.height.toFixed(1)} pt `,
+      );
+      const rm = document.createElement("button");
+      rm.type = "button";
+      rm.className = "btn";
+      rm.textContent = "Remove";
+      rm.addEventListener("click", () => {
+        rects.splice(i, 1);
+        renderRectsList();
+        drawOverlay();
+      });
+      li.append(rm);
+      rectList.append(li);
+    });
+  }
+
+  clearBtn.addEventListener("click", () => {
+    rects.length = 0;
+    renderRectsList();
+    drawOverlay();
+  });
+
+  runBtn.addEventListener("click", async () => {
+    if (!file || !bytes) return;
+    if (rects.length === 0) {
+      out.textContent = "Mark at least one region on the page preview first.";
+      return;
+    }
+    runBtn.disabled = true;
+    out.textContent = "Redacting…";
+    try {
+      const data = await redactPdf(bytes, rects);
+      out.textContent = "";
+      const dl = document.createElement("button");
+      dl.type = "button";
+      dl.className = "btn btn-primary";
+      dl.textContent = "Download redacted PDF";
+      dl.addEventListener("click", () =>
+        downloadArrayBuffer(
+          data,
+          fileNameOf(file!).replace(/\.pdf$/i, "") + "-redacted.pdf",
+          "application/pdf",
+        ),
+      );
+      out.append(dl);
+    } catch (err) {
+      out.textContent = "";
+      const e = document.createElement("div");
+      e.className = "error-text";
+      e.textContent = err instanceof Error ? err.message : String(err);
+      out.append(e);
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+</script>

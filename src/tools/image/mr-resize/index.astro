@@ -1,0 +1,193 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button">
+    <input type="file" accept="image/*" data-file hidden />
+    <div class="dz-title">Drop an image or click to browse</div>
+    <div class="dz-hint">PNG, JPEG, WebP, or GIF — nothing uploads.</div>
+  </div>
+
+  <div class="grid" data-controls style="display:none;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+    <label class="field">
+      <span class="field-label">Width (px)</span>
+      <input class="input" type="number" min="1" data-width />
+    </label>
+    <label class="field">
+      <span class="field-label">Height (px)</span>
+      <input class="input" type="number" min="1" data-height />
+    </label>
+    <label class="field">
+      <span class="field-label">Lock aspect ratio</span>
+      <input type="checkbox" data-aspect checked />
+    </label>
+  </div>
+
+  <div class="grid" data-preview style="display:none;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+    <figure>
+      <figcaption class="field-label" data-orig-label>Original</figcaption>
+      <img data-orig alt="Original image" />
+    </figure>
+    <figure>
+      <figcaption class="field-label" data-res-label>Resized</figcaption>
+      <img data-res alt="Resized image" />
+    </figure>
+  </div>
+
+  <div class="actions">
+    <button class="btn" type="button" data-png disabled>Download PNG</button>
+    <button class="btn" type="button" data-jpeg disabled>Download JPEG</button>
+  </div>
+  <p class="error-text" data-error style="display:none"></p>
+</section>
+
+<style>
+  figure {
+    margin: 0;
+  }
+  figure img {
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+</style>
+
+<script>
+  import { computeTargetSize } from "./tool.ts";
+  import { loadImageBitmap, drawScaled, canvasToBlob } from "../_lib.ts";
+  import { formatBytes, swapExtension } from "@/lib/files";
+  import { downloadBlob } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const widthInput = document.querySelector<HTMLInputElement>("[data-width]")!;
+  const heightInput = document.querySelector<HTMLInputElement>("[data-height]")!;
+  const aspectCheck = document.querySelector<HTMLInputElement>("[data-aspect]")!;
+  const controls = document.querySelector<HTMLDivElement>("[data-controls]")!;
+  const preview = document.querySelector<HTMLDivElement>("[data-preview]")!;
+  const origImg = document.querySelector<HTMLImageElement>("[data-orig]")!;
+  const resImg = document.querySelector<HTMLImageElement>("[data-res]")!;
+  const origLabel = document.querySelector<HTMLElement>("[data-orig-label]")!;
+  const resLabel = document.querySelector<HTMLElement>("[data-res-label]")!;
+  const pngBtn = document.querySelector<HTMLButtonElement>("[data-png]")!;
+  const jpegBtn = document.querySelector<HTMLButtonElement>("[data-jpeg]")!;
+  const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
+
+  let bitmap: ImageBitmap | null = null;
+  let fileName = "";
+  let origSize = 0;
+  let origW = 0;
+  let origH = 0;
+  let resUrl = "";
+  const canvas = document.createElement("canvas");
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) load(file);
+    fileInput.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) load(file);
+  });
+
+  function setError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+
+  function request(): { width: number | null; height: number | null } {
+    return {
+      width: widthInput.valueAsNumber || null,
+      height: heightInput.valueAsNumber || null,
+    };
+  }
+
+  function target(): ReturnType<typeof computeTargetSize> {
+    if (!bitmap) return null;
+    return computeTargetSize(bitmap.width, bitmap.height, request(), aspectCheck.checked);
+  }
+
+  async function load(file: File) {
+    setError("");
+    try {
+      const img = await loadImageBitmap(file);
+      bitmap = img.bitmap;
+      fileName = file.name;
+      origSize = file.size;
+      origW = img.width;
+      origH = img.height;
+      if (origImg.src) URL.revokeObjectURL(origImg.src);
+      origImg.src = URL.createObjectURL(file);
+      widthInput.value = String(img.width);
+      heightInput.value = String(img.height);
+      controls.style.display = "";
+      preview.style.display = "";
+      await render();
+    } catch {
+      setError("Could not read that file as an image.");
+    }
+  }
+
+  async function render() {
+    const t = target();
+    if (!t) {
+      setError("Enter a width or height.");
+      pngBtn.disabled = true;
+      jpegBtn.disabled = true;
+      return;
+    }
+    setError("");
+    drawScaled(canvas, bitmap!, t.width, t.height);
+    const blob = await canvasToBlob(canvas, "image/png");
+    if (resUrl) URL.revokeObjectURL(resUrl);
+    resUrl = URL.createObjectURL(blob);
+    resImg.src = resUrl;
+    origLabel.textContent = `Original — ${origW}×${origH} (${formatBytes(origSize)})`;
+    resLabel.textContent = `Resized — ${t.width}×${t.height} (${formatBytes(blob.size)})`;
+    pngBtn.disabled = false;
+    jpegBtn.disabled = false;
+  }
+
+  widthInput.addEventListener("input", () => {
+    if (aspectCheck.checked && bitmap) {
+      const w = widthInput.valueAsNumber;
+      if (w > 0) heightInput.value = String(Math.max(1, Math.round((w * bitmap.height) / bitmap.width)));
+    }
+    render();
+  });
+  heightInput.addEventListener("input", () => {
+    if (aspectCheck.checked && bitmap) {
+      const h = heightInput.valueAsNumber;
+      if (h > 0) widthInput.value = String(Math.max(1, Math.round((h * bitmap.width) / bitmap.height)));
+    }
+    render();
+  });
+  aspectCheck.addEventListener("change", render);
+
+  pngBtn.addEventListener("click", async () => {
+    const t = target();
+    if (!t) return;
+    drawScaled(canvas, bitmap!, t.width, t.height);
+    downloadBlob(await canvasToBlob(canvas, "image/png"), swapExtension(fileName, "png"));
+  });
+  jpegBtn.addEventListener("click", async () => {
+    const t = target();
+    if (!t) return;
+    drawScaled(canvas, bitmap!, t.width, t.height);
+    downloadBlob(await canvasToBlob(canvas, "image/jpeg", 0.92), swapExtension(fileName, "jpg"));
+  });
+</script>

@@ -1,0 +1,167 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button">
+    <input type="file" accept="image/*" data-file hidden />
+    <div class="dz-title">Drop an image or click to browse</div>
+    <div class="dz-hint">Convert between PNG, JPEG, and WebP — nothing uploads.</div>
+  </div>
+
+  <div class="grid" data-controls style="display:none;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+    <label class="field">
+      <span class="field-label">Output format</span>
+      <select class="input" data-format>
+        <option value="png">PNG</option>
+        <option value="jpeg">JPEG</option>
+        <option value="webp">WebP</option>
+      </select>
+    </label>
+    <label class="field" data-quality-field style="display:none">
+      <span class="field-label">Quality</span>
+      <input class="input" type="range" min="1" max="100" value="85" data-quality />
+    </label>
+  </div>
+
+  <div class="grid" data-preview style="display:none;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+    <figure>
+      <figcaption class="field-label" data-before-label>Before</figcaption>
+      <img data-before alt="Original image" />
+    </figure>
+    <figure>
+      <figcaption class="field-label" data-after-label>After</figcaption>
+      <img data-after alt="Converted image" />
+    </figure>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-download disabled>Download</button>
+  </div>
+  <p class="error-text" data-error style="display:none"></p>
+</section>
+
+<style>
+  figure {
+    margin: 0;
+  }
+  figure img {
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+</style>
+
+<script>
+  import { normalizeFormat, canEncode, clampQuality } from "./tool.ts";
+  import { loadImageBitmap, drawScaled, canvasToBlob } from "../_lib.ts";
+  import { formatBytes, swapExtension } from "@/lib/files";
+  import { downloadBlob } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const formatSelect = document.querySelector<HTMLSelectElement>("[data-format]")!;
+  const qualityField = document.querySelector<HTMLElement>("[data-quality-field]")!;
+  const qualityInput = document.querySelector<HTMLInputElement>("[data-quality]")!;
+  const controls = document.querySelector<HTMLDivElement>("[data-controls]")!;
+  const preview = document.querySelector<HTMLDivElement>("[data-preview]")!;
+  const beforeImg = document.querySelector<HTMLImageElement>("[data-before]")!;
+  const afterImg = document.querySelector<HTMLImageElement>("[data-after]")!;
+  const beforeLabel = document.querySelector<HTMLElement>("[data-before-label]")!;
+  const afterLabel = document.querySelector<HTMLElement>("[data-after-label]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
+
+  let bitmap: ImageBitmap | null = null;
+  let fileName = "";
+  let origSize = 0;
+  let origW = 0;
+  let origH = 0;
+  let currentBlob: Blob | null = null;
+  let beforeUrl = "";
+  let afterUrl = "";
+  const canvas = document.createElement("canvas");
+  const webpOption = formatSelect.querySelector<HTMLOptionElement>('option[value="webp"]')!;
+  if (!canEncode("webp")) webpOption.disabled = true;
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) load(file);
+    fileInput.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) load(file);
+  });
+
+  function setError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+
+  async function load(file: File) {
+    setError("");
+    try {
+      const img = await loadImageBitmap(file);
+      bitmap = img.bitmap;
+      fileName = file.name;
+      origSize = file.size;
+      origW = img.width;
+      origH = img.height;
+      if (beforeUrl) URL.revokeObjectURL(beforeUrl);
+      beforeUrl = URL.createObjectURL(file);
+      beforeImg.src = beforeUrl;
+      beforeLabel.textContent = `Before — ${origW}×${origH} (${formatBytes(origSize)})`;
+      formatSelect.value = normalizeFormat(file.type);
+      controls.style.display = "";
+      preview.style.display = "";
+      await render();
+    } catch {
+      setError("Could not read that file as an image.");
+    }
+  }
+
+  async function render() {
+    if (!bitmap) return;
+    const fmt = normalizeFormat(formatSelect.value);
+    const useQuality = fmt !== "png";
+    qualityField.style.display = useQuality ? "" : "none";
+    if (!canEncode(fmt)) {
+      setError(`Your browser cannot encode ${fmt.toUpperCase()} images.`);
+      downloadBtn.disabled = true;
+      return;
+    }
+    setError("");
+    drawScaled(canvas, bitmap, origW, origH);
+    const quality = useQuality ? clampQuality(qualityInput.valueAsNumber / 100) : undefined;
+    currentBlob = await canvasToBlob(canvas, `image/${fmt}`, quality);
+    if (afterUrl) URL.revokeObjectURL(afterUrl);
+    afterUrl = URL.createObjectURL(currentBlob);
+    afterImg.src = afterUrl;
+    const pct = Math.round((1 - currentBlob.size / origSize) * 100);
+    const verb = pct > 0 ? `${pct}% smaller` : pct < 0 ? `${-pct}% larger` : "same size";
+    afterLabel.textContent = `After — ${fmt.toUpperCase()} (${formatBytes(currentBlob.size)}), ${verb}`;
+    downloadBtn.disabled = false;
+  }
+
+  formatSelect.addEventListener("change", render);
+  qualityInput.addEventListener("input", render);
+
+  downloadBtn.addEventListener("click", () => {
+    if (!currentBlob) return;
+    const fmt = normalizeFormat(formatSelect.value);
+    downloadBlob(currentBlob, swapExtension(fileName, fmt === "jpeg" ? "jpg" : fmt));
+  });
+</script>

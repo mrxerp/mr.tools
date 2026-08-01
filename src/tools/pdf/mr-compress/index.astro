@@ -1,0 +1,122 @@
+---
+// mr compress — re-save a PDF as compactly as pdf-lib can manage.
+---
+<section class="stage">
+  <div class="drop-zone" data-zone role="button" tabindex="0">
+    <div class="dz-title">Drop a PDF here or click to browse</div>
+    <div class="dz-hint">Runs locally — nothing uploads</div>
+    <input type="file" accept="application/pdf" hidden data-input />
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" data-run disabled>Compress</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<style>
+  .badge {
+    display: inline-block;
+    padding: 0.1rem 0.6rem;
+    border-radius: 999px;
+    font-weight: 700;
+  }
+  .badge.better {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .badge.worse {
+    background: rgba(200, 70, 70, 0.15);
+    color: #c0392b;
+  }
+  .note {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-top: 0.6rem;
+  }
+</style>
+
+<script>
+  import { compressPdf, reductionPct, isSmaller, shouldAttempt } from "./tool.ts";
+  import { readFileAsArrayBuffer, formatBytes, fileNameOf } from "@/lib/files";
+  import { downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const input = document.querySelector<HTMLInputElement>("[data-input]")!;
+  const runBtn = document.querySelector<HTMLButtonElement>("[data-run]")!;
+  const out = document.querySelector<HTMLElement>("[data-out]")!;
+
+  let file: File | null = null;
+
+  function pick(f: File | undefined) {
+    if (!f) return;
+    file = f;
+    runBtn.disabled = false;
+    out.textContent = `${fileNameOf(f)} — ${formatBytes(f.size)}. Ready to compress.`;
+  }
+
+  zone.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => pick(input.files?.[0]));
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    pick(e.dataTransfer?.files?.[0]);
+  });
+
+  runBtn.addEventListener("click", async () => {
+    if (!file) return;
+    const f = file;
+    runBtn.disabled = true;
+    out.textContent = "Compressing…";
+    try {
+      const bytes = await readFileAsArrayBuffer(f);
+      if (!shouldAttempt(bytes)) throw new Error("The file is empty.");
+      const result = await compressPdf(bytes);
+      const pct = reductionPct(result.originalBytes, result.resultBytes);
+      const better = isSmaller(result);
+      const badge = document.createElement("span");
+      badge.className = `badge ${better ? "better" : "worse"}`;
+      badge.textContent = better ? `−${pct.toFixed(1)}%` : `+${(-pct).toFixed(1)}%`;
+      const line = document.createElement("div");
+      line.append(
+        `Before ${formatBytes(result.originalBytes)}  →  After ${formatBytes(result.resultBytes)} `,
+        badge,
+      );
+      out.textContent = "";
+      out.append(line);
+      const note = document.createElement("div");
+      note.className = "note";
+      note.textContent = better
+        ? "Saved by re-serializing and dropping unused objects. Real image recompression (re-encoding images) isn't available client-side in this version."
+        : "The re-save came out larger, so this PDF was already compact. Real image recompression isn't available client-side in this version.";
+      out.append(note);
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      const dl = document.createElement("button");
+      dl.type = "button";
+      dl.className = "btn btn-primary";
+      dl.textContent = "Download";
+      dl.addEventListener("click", () =>
+        downloadArrayBuffer(
+          result.data,
+          fileNameOf(f).replace(/\.pdf$/i, "") + "-compressed.pdf",
+          "application/pdf",
+        ),
+      );
+      actions.append(dl);
+      out.append(actions);
+    } catch (err) {
+      out.textContent = "";
+      const e = document.createElement("div");
+      e.className = "error-text";
+      e.textContent = err instanceof Error ? err.message : String(err);
+      out.append(e);
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+</script>

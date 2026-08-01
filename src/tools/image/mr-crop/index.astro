@@ -1,0 +1,292 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button">
+    <input type="file" accept="image/*" data-file hidden />
+    <div class="dz-title">Drop an image or click to browse</div>
+    <div class="dz-hint">PNG, JPEG, or WebP — nothing uploads.</div>
+  </div>
+
+  <div class="grid" data-editor style="display:none;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+    <div class="viewport" data-viewport>
+      <img data-img alt="Image to crop" draggable="false" />
+      <div class="sel" data-sel><span class="handle" data-handle></span></div>
+    </div>
+    <div>
+      <div class="field">
+        <span class="field-label">Preset</span>
+        <div class="actions">
+          <button class="btn" type="button" data-preset-free>Free</button>
+          <button class="btn" type="button" data-preset-11>1:1</button>
+          <button class="btn" type="button" data-preset-43>4:3</button>
+          <button class="btn" type="button" data-preset-169>16:9</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="field-label">Selection</span>
+        <div class="output-box" data-dims style="margin-top:0"></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" type="button" data-crop disabled>Crop</button>
+        <button class="btn" type="button" data-download style="display:none" disabled>Download PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid" data-result style="display:none;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+    <figure>
+      <figcaption class="field-label">Cropped</figcaption>
+      <img data-result-img alt="Cropped image" />
+    </figure>
+  </div>
+
+  <p class="error-text" data-error style="display:none"></p>
+</section>
+
+<style>
+  .viewport {
+    position: relative;
+    width: 100%;
+    max-width: 520px;
+    user-select: none;
+  }
+  .viewport img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .sel {
+    position: absolute;
+    border: 2px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    cursor: move;
+    touch-action: none;
+  }
+  .handle {
+    position: absolute;
+    right: -8px;
+    bottom: -8px;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #fff;
+    background: var(--accent);
+    border-radius: 3px;
+    cursor: nwse-resize;
+  }
+  figure {
+    margin: 0;
+  }
+  figure img {
+    max-width: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+</style>
+
+<script>
+  import { clampCropRect, presetAspect } from "./tool.ts";
+  import { loadImageBitmap } from "../_lib.ts";
+  import { swapExtension } from "@/lib/files";
+  import { downloadBlob } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
+  const editor = document.querySelector<HTMLDivElement>("[data-editor]")!;
+  const viewport = document.querySelector<HTMLDivElement>("[data-viewport]")!;
+  const imgEl = document.querySelector<HTMLImageElement>("[data-img]")!;
+  const selEl = document.querySelector<HTMLDivElement>("[data-sel]")!;
+  const handle = document.querySelector<HTMLElement>("[data-handle]")!;
+  const freeBtn = document.querySelector<HTMLButtonElement>("[data-preset-free]")!;
+  const a11Btn = document.querySelector<HTMLButtonElement>("[data-preset-11]")!;
+  const a43Btn = document.querySelector<HTMLButtonElement>("[data-preset-43]")!;
+  const a169Btn = document.querySelector<HTMLButtonElement>("[data-preset-169]")!;
+  const dims = document.querySelector<HTMLDivElement>("[data-dims]")!;
+  const cropBtn = document.querySelector<HTMLButtonElement>("[data-crop]")!;
+  const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
+  const result = document.querySelector<HTMLDivElement>("[data-result]")!;
+  const resultImg = document.querySelector<HTMLImageElement>("[data-result-img]")!;
+  const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
+
+  let bitmap: ImageBitmap | null = null;
+  let fileName = "";
+  let origW = 0;
+  let origH = 0;
+  let scale = 1;
+  let sel = { x: 0, y: 0, w: 0, h: 0 };
+  let dragging: "move" | "resize" | null = null;
+  let dragStart = { px: 0, py: 0, x: 0, y: 0, w: 0, h: 0 };
+  let currentBlob: Blob | null = null;
+  let resultUrl = "";
+  let imgUrl = "";
+
+  function clamp(v: number, lo: number, hi: number): number {
+    return Math.min(hi, Math.max(lo, v));
+  }
+
+  function setError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = msg ? "block" : "none";
+  }
+
+  function renderDims() {
+    if (!bitmap) return;
+    const nat = clampCropRect(
+      { x: sel.x / scale, y: sel.y / scale, w: sel.w / scale, h: sel.h / scale },
+      { width: origW, height: origH },
+    );
+    dims.textContent = `${nat.w} × ${nat.h} px at (${nat.x}, ${nat.y})`;
+  }
+
+  function applySel() {
+    selEl.style.left = `${sel.x}px`;
+    selEl.style.top = `${sel.y}px`;
+    selEl.style.width = `${sel.w}px`;
+    selEl.style.height = `${sel.h}px`;
+    renderDims();
+  }
+
+  function maxX(): number {
+    return imgEl.clientWidth;
+  }
+
+  function maxY(): number {
+    return imgEl.clientHeight;
+  }
+
+  zone.addEventListener("click", () => fileInput.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+  fileInput.addEventListener("change", () => {
+    const file = fileInput.files?.[0];
+    if (file) load(file);
+    fileInput.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) load(file);
+  });
+
+  async function load(file: File) {
+    setError("");
+    try {
+      const img = await loadImageBitmap(file);
+      bitmap = img.bitmap;
+      fileName = file.name;
+      origW = img.width;
+      origH = img.height;
+      if (imgUrl) URL.revokeObjectURL(imgUrl);
+      imgUrl = URL.createObjectURL(file);
+      imgEl.src = imgUrl;
+      editor.style.display = "";
+      result.style.display = "none";
+      downloadBtn.style.display = "none";
+      downloadBtn.disabled = true;
+      currentBlob = null;
+      await imgEl.decode();
+      const rect = viewport.getBoundingClientRect();
+      const vw = rect.width;
+      const vh = rect.height;
+      scale = vw / origW;
+      sel = { x: vw * 0.2, y: vh * 0.2, w: vw * 0.6, h: vh * 0.6 };
+      applySel();
+      cropBtn.disabled = false;
+    } catch {
+      setError("Could not read that file as an image.");
+    }
+  }
+
+  selEl.addEventListener("pointerdown", (e) => {
+    if (e.target === handle) return;
+    e.preventDefault();
+    dragging = "move";
+    dragStart = { px: e.clientX, py: e.clientY, x: sel.x, y: sel.y, w: sel.w, h: sel.h };
+    selEl.setPointerCapture(e.pointerId);
+  });
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragging = "resize";
+    dragStart = { px: e.clientX, py: e.clientY, x: sel.x, y: sel.y, w: sel.w, h: sel.h };
+    handle.setPointerCapture(e.pointerId);
+  });
+  selEl.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - dragStart.px;
+    const dy = e.clientY - dragStart.py;
+    if (dragging === "move") {
+      sel.x = clamp(dragStart.x + dx, 0, maxX() - sel.w);
+      sel.y = clamp(dragStart.y + dy, 0, maxY() - sel.h);
+    } else {
+      sel.w = clamp(dragStart.w + dx, 8, maxX() - sel.x);
+      sel.h = clamp(dragStart.h + dy, 8, maxY() - sel.y);
+    }
+    applySel();
+  });
+  const endDrag = () => {
+    dragging = null;
+  };
+  selEl.addEventListener("pointerup", endDrag);
+  selEl.addEventListener("pointercancel", endDrag);
+
+  function applyPreset(aspect: { w: number; h: number } | null) {
+    if (!bitmap || !aspect) return;
+    let w = sel.w;
+    let h = sel.h;
+    if (w / h > aspect.w / aspect.h) {
+      w = h * (aspect.w / aspect.h);
+    } else {
+      h = w * (aspect.h / aspect.w);
+    }
+    sel.w = clamp(w, 8, maxX() - sel.x);
+    sel.h = clamp(h, 8, maxY() - sel.y);
+    applySel();
+  }
+
+  freeBtn.addEventListener("click", () => applyPreset(presetAspect("free")));
+  a11Btn.addEventListener("click", () => applyPreset(presetAspect("1:1")));
+  a43Btn.addEventListener("click", () => applyPreset(presetAspect("4:3")));
+  a169Btn.addEventListener("click", () => applyPreset(presetAspect("16:9")));
+
+  cropBtn.addEventListener("click", () => {
+    if (!bitmap) return;
+    const nat = clampCropRect(
+      { x: sel.x / scale, y: sel.y / scale, w: sel.w / scale, h: sel.h / scale },
+      { width: origW, height: origH },
+    );
+    const canvas = document.createElement("canvas");
+    canvas.width = nat.w;
+    canvas.height = nat.h;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(bitmap, nat.x, nat.y, nat.w, nat.h, 0, 0, nat.w, nat.h);
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setError("Could not render the crop.");
+        return;
+      }
+      currentBlob = blob;
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+      resultUrl = URL.createObjectURL(blob);
+      resultImg.src = resultUrl;
+      result.style.display = "";
+      downloadBtn.style.display = "";
+      downloadBtn.disabled = false;
+      setError("");
+    }, "image/png");
+  });
+
+  downloadBtn.addEventListener("click", () => {
+    if (!currentBlob) return;
+    downloadBlob(currentBlob, swapExtension(fileName, "png"));
+  });
+</script>

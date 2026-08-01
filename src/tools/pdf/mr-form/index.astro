@@ -1,0 +1,197 @@
+---
+// mr form — detect PDF form fields and fill them in.
+---
+<section class="stage">
+  <div class="drop-zone" data-zone role="button" tabindex="0">
+    <div class="dz-title">Drop a PDF form here or click to browse</div>
+    <div class="dz-hint">Runs locally — nothing uploads</div>
+    <input type="file" accept="application/pdf" hidden data-input />
+  </div>
+  <div class="fields" data-fields hidden>
+    <h3>Form fields</h3>
+    <div data-field-list></div>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" data-run disabled>Fill &amp; Download</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<style>
+  .fields h3 {
+    margin: 1rem 0 0.5rem;
+  }
+  .field-row {
+    margin-bottom: 0.9rem;
+  }
+  .field-row .sub {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-bottom: 0.25rem;
+  }
+  .field-row select {
+    display: block;
+    width: 100%;
+  }
+</style>
+
+<script>
+  import { getFormFields, fillForm, type FieldInfo } from "./tool.ts";
+  import { readFileAsArrayBuffer, fileNameOf } from "@/lib/files";
+  import { downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const fieldsBox = document.querySelector<HTMLDivElement>("[data-fields]")!;
+  const fieldList = document.querySelector<HTMLDivElement>("[data-field-list]")!;
+  const runBtn = document.querySelector<HTMLButtonElement>("[data-run]")!;
+  const out = document.querySelector<HTMLElement>("[data-out]")!;
+  if (!zone || !input || !fieldsBox || !fieldList || !runBtn || !out)
+    throw new Error("mr form mount failed");
+
+  let file: File | null = null;
+  let fields: FieldInfo[] = [];
+  const inputs: (HTMLInputElement | HTMLSelectElement)[] = [];
+
+  function fieldLabel(f: FieldInfo): string {
+    const opts = f.options.length ? ` — ${f.options.join(", ")}` : "";
+    const val = f.value ? ` (current: ${f.value})` : "";
+    return `${f.name} [${f.type}]${opts}${val}`;
+  }
+
+  function buildFieldRows() {
+    fieldList.textContent = "";
+    inputs.length = 0;
+    for (const f of fields) {
+      const row = document.createElement("label");
+      row.className = "field field-row";
+      const span = document.createElement("span");
+      span.className = "field-label";
+      span.textContent = fieldLabel(f);
+      row.append(span);
+      if (f.type === "dropdown" || f.type === "list" || f.type === "radio") {
+        const select = document.createElement("select");
+        select.className = "input";
+        const blank = document.createElement("option");
+        blank.value = "";
+        blank.textContent = "— select —";
+        select.append(blank);
+        for (const opt of f.options) {
+          const o = document.createElement("option");
+          o.value = opt;
+          o.textContent = opt;
+          select.append(o);
+        }
+        if (f.value) select.value = f.value.split(",")[0];
+        select.setAttribute("data-name", f.name);
+        row.append(select);
+        inputs.push(select);
+      } else if (f.type === "checkbox") {
+        const select = document.createElement("select");
+        select.className = "input";
+        for (const opt of ["", "on", "off"]) {
+          const o = document.createElement("option");
+          o.value = opt;
+          o.textContent = opt === "" ? "— leave as is —" : opt === "on" ? "Check" : "Uncheck";
+          select.append(o);
+        }
+        select.setAttribute("data-name", f.name);
+        row.append(select);
+        inputs.push(select);
+      } else {
+        const text = document.createElement("input");
+        text.type = "text";
+        text.className = "input";
+        text.placeholder = f.value ?? "";
+        text.value = "";
+        text.setAttribute("data-name", f.name);
+        row.append(text);
+        inputs.push(text);
+      }
+      fieldList.append(row);
+    }
+    runBtn.disabled = fields.length === 0;
+  }
+
+  function pick(f: File | undefined) {
+    if (!f) return;
+    file = f;
+    fieldsBox.hidden = true;
+    out.textContent = "Reading form fields…";
+    readFileAsArrayBuffer(f)
+      .then(async (buf) => {
+        fields = await getFormFields(buf);
+        if (fields.length === 0) {
+          out.textContent = "No fillable form fields found in this PDF.";
+          fieldsBox.hidden = true;
+          runBtn.disabled = true;
+          return;
+        }
+        buildFieldRows();
+        fieldsBox.hidden = false;
+        out.textContent = "";
+      })
+      .catch((err) => {
+        out.textContent = "";
+        const e = document.createElement("div");
+        e.className = "error-text";
+        e.textContent = `Could not read the form: ${err instanceof Error ? err.message : String(err)}`;
+        out.append(e);
+      });
+  }
+
+  zone.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => pick(input.files?.[0]));
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    pick(e.dataTransfer?.files?.[0]);
+  });
+
+  runBtn.addEventListener("click", async () => {
+    if (!file) return;
+    const values: Record<string, string> = {};
+    for (const el of inputs) {
+      const name = el.getAttribute("data-name");
+      if (name) values[name] = el.value;
+    }
+    runBtn.disabled = true;
+    out.textContent = "Filling…";
+    try {
+      const bytes = await readFileAsArrayBuffer(file);
+      const result = await fillForm(bytes, values);
+      const skip = result.unsupported.length
+        ? ` Skipped: ${result.unsupported.join(", ")}.`
+        : "";
+      out.textContent = "";
+      const line = document.createElement("div");
+      line.append(`Filled ${result.filled.length} field${result.filled.length === 1 ? "" : "s"}.${skip}`);
+      out.append(line);
+      const dl = document.createElement("button");
+      dl.type = "button";
+      dl.className = "btn btn-primary";
+      dl.textContent = "Download filled PDF";
+      dl.addEventListener("click", () =>
+        downloadArrayBuffer(
+          result.data,
+          fileNameOf(file!).replace(/\.pdf$/i, "") + "-filled.pdf",
+          "application/pdf",
+        ),
+      );
+      out.append(dl);
+    } catch (err) {
+      out.textContent = "";
+      const e = document.createElement("div");
+      e.className = "error-text";
+      e.textContent = err instanceof Error ? err.message : String(err);
+      out.append(e);
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+</script>

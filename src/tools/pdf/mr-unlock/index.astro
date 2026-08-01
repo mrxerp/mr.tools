@@ -1,0 +1,100 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose a PDF to unlock">
+    <input type="file" accept="application/pdf" data-input hidden />
+    <span class="dz-title">Drop a PDF here or click to browse</span>
+    <span class="dz-hint">One PDF — if it is not protected, there is nothing to remove.</span>
+  </div>
+
+  <label class="field">
+    <span class="field-label">Password</span>
+    <input class="input" type="password" data-password placeholder="User or owner password (if the file is locked)" autocomplete="off" />
+  </label>
+
+  <div class="actions">
+    <button type="button" class="btn btn-primary" data-run disabled>Unlock</button>
+    <button type="button" class="btn" data-download hidden>Download unlocked PDF</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { unlockPdf } from "./tool.ts";
+  import { readFileAsArrayBuffer, formatBytes, swapExtension } from "@/lib/files";
+  import { downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const password = document.querySelector<HTMLInputElement>("[data-password]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const download = document.querySelector<HTMLButtonElement>("[data-download]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  if (!zone || !input || !password || !run || !download || !out) throw new Error("mr unlock mount failed");
+
+  let file: File | null = null;
+  let unlocked: Uint8Array | null = null;
+
+  const accept = (incoming: FileList | File[]) => {
+    file = Array.from(incoming).find(
+      (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
+    ) ?? null;
+    run.disabled = !file;
+    if (file) {
+      out.textContent = `Loaded ${file.name} (${formatBytes(file.size)}).`;
+    } else {
+      out.textContent = "";
+    }
+    download.hidden = true;
+    unlocked = null;
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      input.click();
+    }
+  });
+  input.addEventListener("change", () => {
+    if (input.files) accept(input.files);
+    input.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer) accept(e.dataTransfer.files);
+  });
+
+  run.addEventListener("click", async () => {
+    if (!file) return;
+    run.disabled = true;
+    out.textContent = "Checking…";
+    try {
+      const bytes = await readFileAsArrayBuffer(file);
+      unlocked = await unlockPdf(bytes, password.value);
+      out.textContent = "This PDF is not password-protected, so nothing needed removing. Download the unchanged copy below.";
+      download.hidden = false;
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Could not read this PDF.";
+      out.appendChild(errEl);
+      download.hidden = true;
+      unlocked = null;
+    } finally {
+      run.disabled = !file;
+    }
+  });
+
+  download.addEventListener("click", () => {
+    if (file && unlocked) downloadArrayBuffer(unlocked, swapExtension(file.name, "pdf"), "application/pdf");
+  });
+</script>

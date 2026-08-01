@@ -1,0 +1,112 @@
+---
+// mr password — strong random passwords, regenerated on every change.
+---
+<section class="stage">
+  <div class="opts">
+    <label><input type="checkbox" data-opt="lowercase" checked /> Lowercase</label>
+    <label><input type="checkbox" data-opt="uppercase" checked /> Uppercase</label>
+    <label><input type="checkbox" data-opt="digits" checked /> Digits</label>
+    <label><input type="checkbox" data-opt="symbols" checked /> Symbols</label>
+    <label><input type="checkbox" data-opt="exclude" /> Exclude ambiguous (I l 1 0 O o)</label>
+  </div>
+  <label class="field">
+    <span class="field-label">Length: <span data-length-value>16</span></span>
+    <input class="input" type="range" min="4" max="128" step="1" value="16" data-length />
+  </label>
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-generate>Generate</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<style>
+  .opts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1.1rem;
+    margin-block: 0 0.4rem;
+  }
+  .opts label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+  }
+</style>
+
+<script>
+  import { generatePassword, type PasswordOptions, type RandomSource } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const optionEls = new Map<string, HTMLInputElement>();
+  document.querySelectorAll<HTMLInputElement>("[data-opt]").forEach((el) => {
+    optionEls.set(el.dataset.opt ?? "", el);
+  });
+  const lengthElMaybe = document.querySelector<HTMLInputElement>("[data-length]");
+  const lengthValueMaybe = document.querySelector<HTMLSpanElement>("[data-length-value]");
+  const generateBtnMaybe = document.querySelector<HTMLButtonElement>("[data-generate]");
+  const outMaybe = document.querySelector<HTMLOutputElement>("[data-out]");
+  if (!lengthElMaybe || !lengthValueMaybe || !generateBtnMaybe || !outMaybe || optionEls.size === 0) {
+    throw new Error("mr password mount failed");
+  }
+  const lengthEl = lengthElMaybe;
+  const lengthValue = lengthValueMaybe;
+  const generateBtn = generateBtnMaybe;
+  const out = outMaybe;
+
+  const random: RandomSource | undefined =
+    typeof crypto !== "undefined" && crypto.getRandomValues
+      ? (n) => crypto.getRandomValues(new Uint8Array(n))
+      : undefined;
+
+  function options(): PasswordOptions {
+    return {
+      length: Number(lengthEl.value),
+      lowercase: optionEls.get("lowercase")!.checked,
+      uppercase: optionEls.get("uppercase")!.checked,
+      digits: optionEls.get("digits")!.checked,
+      symbols: optionEls.get("symbols")!.checked,
+      excludeAmbiguous: optionEls.get("exclude")!.checked,
+    };
+  }
+
+  function render() {
+    lengthValue.textContent = lengthEl.value;
+    const opts = options();
+    const anyClass = opts.lowercase || opts.uppercase || opts.digits || opts.symbols;
+    out.innerHTML = "";
+    if (!anyClass) {
+      const msg = document.createElement("div");
+      msg.className = "error-text";
+      msg.textContent = "Select at least one character set.";
+      out.appendChild(msg);
+      return;
+    }
+    for (let i = 0; i < 3; i++) {
+      const pw = generatePassword(opts, random);
+      const row = document.createElement("div");
+      row.className = "output-box";
+      row.style.margin = "0";
+      const wrap = document.createElement("div");
+      wrap.style.display = "flex";
+      wrap.style.alignItems = "center";
+      wrap.style.justifyContent = "space-between";
+      wrap.style.gap = "0.8rem";
+      const text = document.createElement("span");
+      text.textContent = pw;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.textContent = "Copy";
+      btn.addEventListener("click", () => copyTextWithFeedback(pw, btn));
+      wrap.append(text, btn);
+      row.appendChild(wrap);
+      out.appendChild(row);
+    }
+  }
+
+  for (const el of optionEls.values()) el.addEventListener("change", render);
+  lengthEl.addEventListener("input", render);
+  generateBtn.addEventListener("click", render);
+  render();
+</script>

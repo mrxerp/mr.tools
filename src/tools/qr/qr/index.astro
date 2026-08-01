@@ -1,0 +1,130 @@
+---
+// mr qr — instant QR generation from text or URL, debounced while typing.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Text or URL</span>
+    <input class="input" type="text" data-input placeholder="https://example.com" />
+  </label>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label class="field">
+      <span class="field-label">Size: <span data-size-value>256</span>px</span>
+      <input class="input" type="range" min="96" max="1024" step="16" value="256" data-size />
+    </label>
+    <label class="field">
+      <span class="field-label">Error correction</span>
+      <select class="input" data-level>
+        <option value="L">L — ~7% (smallest)</option>
+        <option value="M" selected>M — ~15%</option>
+        <option value="Q">Q — ~25%</option>
+        <option value="H">H — ~30% (most robust)</option>
+      </select>
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn" type="button" data-copy>Copy text</button>
+    <button class="btn btn-primary" type="button" data-download disabled>Download PNG</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { generateQrDataUrl, normalizeQrText, type QrOptions } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { downloadBlob } from "@/lib/download";
+
+  const inputMaybe = document.querySelector<HTMLInputElement>("[data-input]");
+  const sizeMaybe = document.querySelector<HTMLInputElement>("[data-size]");
+  const sizeValueMaybe = document.querySelector<HTMLSpanElement>("[data-size-value]");
+  const levelMaybe = document.querySelector<HTMLSelectElement>("[data-level]");
+  const copyBtnMaybe = document.querySelector<HTMLButtonElement>("[data-copy]");
+  const downloadBtnMaybe = document.querySelector<HTMLButtonElement>("[data-download]");
+  const outMaybe = document.querySelector<HTMLOutputElement>("[data-out]");
+  if (!inputMaybe || !sizeMaybe || !sizeValueMaybe || !levelMaybe || !copyBtnMaybe || !downloadBtnMaybe || !outMaybe) {
+    throw new Error("mr qr mount failed");
+  }
+  const input = inputMaybe;
+  const size = sizeMaybe;
+  const sizeValue = sizeValueMaybe;
+  const level = levelMaybe;
+  const copyBtn = copyBtnMaybe;
+  const downloadBtn = downloadBtnMaybe;
+  const out = outMaybe;
+
+  let timer: number | undefined;
+  let latest = 0;
+  let currentSrc: string | null = null;
+
+  function message(text: string, error = false) {
+    out.innerHTML = "";
+    const el = document.createElement("div");
+    if (error) el.className = "error-text";
+    el.textContent = text;
+    out.appendChild(el);
+  }
+
+  async function render() {
+    const id = ++latest;
+    sizeValue.textContent = size.value;
+    const text = normalizeQrText(input.value);
+    if (!text) {
+      currentSrc = null;
+      downloadBtn.disabled = true;
+      message("Enter some text or a URL to encode.");
+      return;
+    }
+    try {
+      const src = await generateQrDataUrl(text, {
+        width: Number(size.value),
+        errorCorrectionLevel: level.value as QrOptions["errorCorrectionLevel"],
+      });
+      if (id !== latest) return;
+      currentSrc = src;
+      out.innerHTML = "";
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = `QR code for ${text}`;
+      img.style.maxWidth = "100%";
+      img.style.height = "auto";
+      img.style.imageRendering = "pixelated";
+      out.appendChild(img);
+      downloadBtn.disabled = false;
+    } catch {
+      if (id !== latest) return;
+      currentSrc = null;
+      downloadBtn.disabled = true;
+      message("That text is too long to fit in a QR code — shorten it and try again.", true);
+    }
+  }
+
+  function schedule() {
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(render, 250);
+  }
+
+  input.addEventListener("input", schedule);
+  size.addEventListener("input", schedule);
+  level.addEventListener("change", schedule);
+
+  copyBtn.addEventListener("click", () => {
+    copyTextWithFeedback(normalizeQrText(input.value), copyBtn);
+  });
+
+  downloadBtn.addEventListener("click", async () => {
+    if (!currentSrc) return;
+    try {
+      const res = await fetch(currentSrc);
+      const blob = await res.blob();
+      downloadBlob(blob, "mr-qr.png");
+    } catch {
+      downloadBtn.textContent = "Download failed";
+      downloadBtn.disabled = true;
+      setTimeout(() => {
+        downloadBtn.textContent = "Download PNG";
+        downloadBtn.disabled = false;
+      }, 1500);
+    }
+  });
+
+  render();
+</script>

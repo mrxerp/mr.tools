@@ -1,0 +1,147 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose PDFs to merge">
+    <input type="file" multiple accept="application/pdf" data-input hidden />
+    <span class="dz-title">Drop PDFs here or click to browse</span>
+    <span class="dz-hint">Any number of PDFs — they are joined in the order shown.</span>
+  </div>
+
+  <ol data-list class="merge-list" aria-label="Files to merge"></ol>
+  <div class="field-label" data-total></div>
+
+  <div class="actions">
+    <button type="button" class="btn btn-primary" data-run disabled>Merge</button>
+    <button type="button" class="btn" data-download hidden>Download merged PDF</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<style>
+  .merge-list {
+    margin: 0.8rem 0 0.4rem;
+    padding-left: 1.4rem;
+    display: grid;
+    gap: 0.35rem;
+  }
+  .merge-list li {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    font-size: 0.9rem;
+  }
+  .merge-list .size {
+    color: var(--muted);
+  }
+  .merge-list .remove {
+    margin-left: auto;
+    border: none;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .merge-list .remove:hover {
+    color: var(--danger, #c0392b);
+  }
+</style>
+
+<script>
+  import { mergePdfs } from "./tool.ts";
+  import { readFileAsArrayBuffer, formatBytes, swapExtension } from "@/lib/files";
+  import { downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const list = document.querySelector<HTMLOListElement>("[data-list]");
+  const total = document.querySelector<HTMLDivElement>("[data-total]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const download = document.querySelector<HTMLButtonElement>("[data-download]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  if (!zone || !input || !list || !total || !run || !download || !out) throw new Error("mr merge mount failed");
+
+  const files: File[] = [];
+
+  const render = () => {
+    list.textContent = "";
+    for (const [i, file] of files.entries()) {
+      const li = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = file.name;
+      const size = document.createElement("span");
+      size.className = "size";
+      size.textContent = formatBytes(file.size);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "remove";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => {
+        files.splice(i, 1);
+        render();
+      });
+      li.append(name, size, remove);
+      list.appendChild(li);
+    }
+    const bytes = files.reduce((n, f) => n + f.size, 0);
+    total.textContent = files.length ? `${files.length} file${files.length === 1 ? "" : "s"} · ${formatBytes(bytes)} total` : "";
+    run.disabled = files.length < 2;
+  };
+
+  const addFiles = (incoming: FileList | File[]) => {
+    for (const file of Array.from(incoming)) {
+      if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+        files.push(file);
+      }
+    }
+    render();
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      input.click();
+    }
+  });
+  input.addEventListener("change", () => {
+    if (input.files) addFiles(input.files);
+    input.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer) addFiles(e.dataTransfer.files);
+  });
+
+  let merged: Uint8Array | null = null;
+  run.addEventListener("click", async () => {
+    run.disabled = true;
+    out.textContent = "Merging…";
+    try {
+      const buffers = await Promise.all(files.map(readFileAsArrayBuffer));
+      merged = await mergePdfs(buffers);
+      out.textContent = `Merged ${files.length} files into ${formatBytes(merged.byteLength)}.`;
+      download.hidden = false;
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Merge failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = files.length < 2;
+    }
+  });
+
+  download.addEventListener("click", () => {
+    if (merged) downloadArrayBuffer(merged, swapExtension(files[0].name, "pdf"), "application/pdf");
+  });
+
+  render();
+</script>

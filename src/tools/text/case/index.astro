@@ -1,6 +1,5 @@
 ---
 // mr case — live text case converter. Instant: no submit button.
-import { toCases } from "./tool.ts";
 ---
 <section class="stage">
   <label class="field">
@@ -14,8 +13,8 @@ import { toCases } from "./tool.ts";
   import { toCases } from "./tool.ts";
   import { copyTextWithFeedback } from "@/lib/clipboard";
 
-  const input = document.querySelector<HTMLTextAreaElement>("[data-input]");
-  const results = document.querySelector<HTMLDivElement>("[data-results]");
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const results = document.querySelector<HTMLDivElement>("[data-results]")!;
   if (!input || !results) throw new Error("mr case mount failed");
 
   function render() {

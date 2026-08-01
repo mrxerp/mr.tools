@@ -1,0 +1,140 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose a PDF to split">
+    <input type="file" accept="application/pdf" data-input hidden />
+    <span class="dz-title">Drop a PDF here or click to browse</span>
+    <span class="dz-hint">One PDF — split every page, in groups, or by ranges.</span>
+  </div>
+
+  <label class="field">
+    <span class="field-label">Split mode</span>
+    <select class="input" data-mode>
+      <option value="every-page">Every page</option>
+      <option value="every-n">Every N pages</option>
+      <option value="ranges">Page ranges</option>
+    </select>
+  </label>
+
+  <label class="field" data-n-wrap hidden>
+    <span class="field-label">Pages per file</span>
+    <input class="input" type="number" min="1" step="1" value="2" data-n />
+  </label>
+
+  <label class="field" data-ranges-wrap hidden>
+    <span class="field-label">Ranges (e.g. 1-3,5,7-9)</span>
+    <input class="input" type="text" data-ranges placeholder="1-3,5,7-9" />
+  </label>
+
+  <div class="actions">
+    <button type="button" class="btn btn-primary" data-run disabled>Split</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { splitPdf } from "./tool.ts";
+  import { readFileAsArrayBuffer, formatBytes, fileNameOf } from "@/lib/files";
+  import { downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const mode = document.querySelector<HTMLSelectElement>("[data-mode]");
+  const nWrap = document.querySelector<HTMLElement>("[data-n-wrap]");
+  const nInput = document.querySelector<HTMLInputElement>("[data-n]");
+  const rangesWrap = document.querySelector<HTMLElement>("[data-ranges-wrap]");
+  const rangesInput = document.querySelector<HTMLInputElement>("[data-ranges]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  if (!zone || !input || !mode || !nWrap || !nInput || !rangesWrap || !rangesInput || !run || !out)
+    throw new Error("mr split mount failed");
+
+  let file: File | null = null;
+  const chunks: { name: string; bytes: Uint8Array }[] = [];
+
+  const syncMode = () => {
+    nWrap.hidden = mode.value !== "every-n";
+    rangesWrap.hidden = mode.value !== "ranges";
+  };
+  mode.addEventListener("change", syncMode);
+  syncMode();
+
+  const accept = (incoming: FileList | File[]) => {
+    file = Array.from(incoming).find(
+      (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
+    ) ?? null;
+    run.disabled = !file;
+    chunks.length = 0;
+    out.textContent = file ? `Loaded ${file.name} (${formatBytes(file.size)}).` : "";
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      input.click();
+    }
+  });
+  input.addEventListener("change", () => {
+    if (input.files) accept(input.files);
+    input.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer) accept(e.dataTransfer.files);
+  });
+
+  run.addEventListener("click", async () => {
+    if (!file) return;
+    run.disabled = true;
+    out.textContent = "Splitting…";
+    try {
+      const bytes = await readFileAsArrayBuffer(file);
+      const modeArg =
+        mode.value === "every-page"
+          ? { type: "every-page" as const }
+          : mode.value === "every-n"
+            ? { type: "every-n" as const, n: Number(nInput.value) }
+            : { type: "ranges" as const, spec: rangesInput.value };
+      const result = await splitPdf(bytes, modeArg);
+      chunks.length = 0;
+      chunks.push(...result);
+
+      const base = fileNameOf(file).replace(/\.[^./\\]+$/, "");
+      out.innerHTML = "";
+      const heading = document.createElement("div");
+      heading.textContent = `${chunks.length} file${chunks.length === 1 ? "" : "s"}:`;
+      out.appendChild(heading);
+      for (const chunk of chunks) {
+        const row = document.createElement("div");
+        row.style.marginTop = "0.5rem";
+        const name = document.createElement("span");
+        name.textContent = `${chunk.name} (${formatBytes(chunk.bytes.byteLength)}) `;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn";
+        btn.textContent = "Download";
+        btn.addEventListener("click", () =>
+          downloadArrayBuffer(chunk.bytes, `${base}-${chunk.name}`, "application/pdf"),
+        );
+        row.append(name, btn);
+        out.appendChild(row);
+      }
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Split failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = !file;
+    }
+  });
+</script>

@@ -1,0 +1,202 @@
+---
+// mr annotate — build a list of text notes and place them on PDF pages.
+---
+<section class="stage">
+  <div class="drop-zone" data-zone role="button" tabindex="0">
+    <div class="dz-title">Drop a PDF here or click to browse</div>
+    <div class="dz-hint">Runs locally — nothing uploads</div>
+    <input type="file" accept="application/pdf" hidden data-input />
+  </div>
+  <div class="grid note-form">
+    <label class="field">
+      <span class="field-label">Page</span>
+      <input class="input" type="number" min="1" value="1" data-page />
+    </label>
+    <label class="field">
+      <span class="field-label">X (pt from left)</span>
+      <input class="input" type="number" step="0.5" value="50" data-x />
+    </label>
+    <label class="field">
+      <span class="field-label">Y (pt from bottom)</span>
+      <input class="input" type="number" step="0.5" value="50" data-y />
+    </label>
+    <label class="field">
+      <span class="field-label">Size (pt)</span>
+      <input class="input" type="number" min="4" max="120" value="12" data-size />
+    </label>
+    <label class="field">
+      <span class="field-label">Color</span>
+      <input class="input" type="color" value="#111111" data-color />
+    </label>
+    <label class="field note-text">
+      <span class="field-label">Note text</span>
+      <textarea class="input" rows="2" placeholder="Type a note…" data-text></textarea>
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn" type="button" data-add>Add note</button>
+  </div>
+  <div class="rect-list" data-notes hidden>
+    <h3>Notes to add</h3>
+    <ul data-note-list></ul>
+    <div class="actions">
+      <button class="btn" type="button" data-clear>Clear all</button>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" data-run disabled>Apply &amp; Download</button>
+  </div>
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<style>
+  .note-form {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    margin-block: 1rem 0.4rem;
+  }
+  .note-form .note-text {
+    grid-column: 1 / -1;
+  }
+  .rect-list h3 {
+    margin: 1rem 0 0.4rem;
+  }
+  .rect-list ul {
+    margin: 0;
+    padding-left: 1.2rem;
+  }
+  .rect-list li {
+    margin-bottom: 0.25rem;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+  }
+</style>
+
+<script>
+  import { annotatePdf, hexToRgb, type Note } from "./tool.ts";
+  import { readFileAsArrayBuffer, fileNameOf } from "@/lib/files";
+  import { downloadArrayBuffer } from "@/lib/download";
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]")!;
+  const input = document.querySelector<HTMLInputElement>("[data-input]")!;
+  const pageInput = document.querySelector<HTMLInputElement>("[data-page]")!;
+  const xInput = document.querySelector<HTMLInputElement>("[data-x]")!;
+  const yInput = document.querySelector<HTMLInputElement>("[data-y]")!;
+  const sizeInput = document.querySelector<HTMLInputElement>("[data-size]")!;
+  const colorInput = document.querySelector<HTMLInputElement>("[data-color]")!;
+  const textInput = document.querySelector<HTMLTextAreaElement>("[data-text]")!;
+  const addBtn = document.querySelector<HTMLButtonElement>("[data-add]")!;
+  const notesBox = document.querySelector<HTMLDivElement>("[data-notes]")!;
+  const noteList = document.querySelector<HTMLUListElement>("[data-note-list]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+  const runBtn = document.querySelector<HTMLButtonElement>("[data-run]")!;
+  const out = document.querySelector<HTMLElement>("[data-out]")!;
+  if (
+    !zone || !input || !pageInput || !xInput || !yInput || !sizeInput || !colorInput ||
+    !textInput || !addBtn || !notesBox || !noteList || !clearBtn || !runBtn || !out
+  ) {
+    throw new Error("mr annotate mount failed");
+  }
+
+  let file: File | null = null;
+  const notes: Note[] = [];
+
+  function addNote() {
+    const text = textInput.value.trim();
+    if (!text) return;
+    notes.push({
+      page: Number(pageInput.value) || 1,
+      x: Number(xInput.value) || 0,
+      y: Number(yInput.value) || 0,
+      text,
+      size: Number(sizeInput.value) || 12,
+      color: hexToRgb(colorInput.value),
+    });
+    textInput.value = "";
+    renderList();
+  }
+
+  function renderList() {
+    notesBox.hidden = notes.length === 0;
+    noteList.textContent = "";
+    notes.forEach((note, i) => {
+      const li = document.createElement("li");
+      li.append(`p${note.page} @${note.x.toFixed(0)},${note.y.toFixed(0)} — "${note.text}" `);
+      const rm = document.createElement("button");
+      rm.type = "button";
+      rm.className = "btn";
+      rm.textContent = "Remove";
+      rm.addEventListener("click", () => {
+        notes.splice(i, 1);
+        renderList();
+      });
+      li.append(rm);
+      noteList.append(li);
+    });
+  }
+
+  addBtn.addEventListener("click", addNote);
+  textInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      addNote();
+    }
+  });
+  clearBtn.addEventListener("click", () => {
+    notes.length = 0;
+    renderList();
+  });
+
+  function pick(f: File | undefined) {
+    if (!f) return;
+    file = f;
+    runBtn.disabled = false;
+    out.textContent = `${fileNameOf(f)} — ready. Add notes, then apply.`;
+  }
+
+  zone.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => pick(input.files?.[0]));
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    pick(e.dataTransfer?.files?.[0]);
+  });
+
+  runBtn.addEventListener("click", async () => {
+    if (!file) return;
+    if (notes.length === 0) {
+      out.textContent = "Add at least one note first.";
+      return;
+    }
+    runBtn.disabled = true;
+    out.textContent = "Applying notes…";
+    try {
+      const data = await annotatePdf(await readFileAsArrayBuffer(file), notes);
+      out.textContent = "";
+      const dl = document.createElement("button");
+      dl.type = "button";
+      dl.className = "btn btn-primary";
+      dl.textContent = "Download annotated PDF";
+      dl.addEventListener("click", () =>
+        downloadArrayBuffer(
+          data,
+          fileNameOf(file!).replace(/\.pdf$/i, "") + "-annotated.pdf",
+          "application/pdf",
+        ),
+      );
+      out.append(dl);
+    } catch (err) {
+      out.textContent = "";
+      const e = document.createElement("div");
+      e.className = "error-text";
+      e.textContent = err instanceof Error ? err.message : String(err);
+      out.append(e);
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+</script>

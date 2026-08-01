@@ -1,0 +1,177 @@
+---
+---
+<section class="stage">
+  <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose a PDF to convert">
+    <input type="file" accept="application/pdf" data-input hidden />
+    <span class="dz-title">Drop a PDF here or click to browse</span>
+    <span class="dz-hint">One PDF — turn pages into PNGs or pull out per-page text.</span>
+  </div>
+
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+    <label class="field" style="margin-bottom:0">
+      <span class="field-label">Convert to</span>
+      <select class="input" data-mode>
+        <option value="images">Images</option>
+        <option value="text">Text</option>
+      </select>
+    </label>
+    <label class="field" style="margin-bottom:0" data-scale-wrap>
+      <span class="field-label">Image scale</span>
+      <select class="input" data-scale>
+        <option value="0.5">50%</option>
+        <option value="1">100%</option>
+        <option value="2" selected>200%</option>
+        <option value="3">300%</option>
+        <option value="4">400%</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="actions" style="margin-top:1rem">
+    <button type="button" class="btn btn-primary" data-run disabled>Convert</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+
+  <div class="grid" data-images hidden></div>
+
+  <label class="field" data-text-wrap hidden>
+    <span class="field-label">Extracted text</span>
+    <textarea class="input" rows="12" data-text readonly></textarea>
+  </label>
+</section>
+
+<script>
+  import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+  import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.mjs?url";
+  import { extractText, convertPdfToImages, parseScale } from "./tool.ts";
+  import { readFileAsArrayBuffer, formatBytes, fileNameOf } from "@/lib/files";
+  import { downloadBlob } from "@/lib/download";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+
+  const zone = document.querySelector<HTMLDivElement>("[data-zone]");
+  const input = document.querySelector<HTMLInputElement>("[data-input]");
+  const mode = document.querySelector<HTMLSelectElement>("[data-mode]");
+  const scaleWrap = document.querySelector<HTMLElement>("[data-scale-wrap]");
+  const scale = document.querySelector<HTMLSelectElement>("[data-scale]");
+  const run = document.querySelector<HTMLButtonElement>("[data-run]");
+  const out = document.querySelector<HTMLElement>("[data-out]");
+  const images = document.querySelector<HTMLDivElement>("[data-images]");
+  const textWrap = document.querySelector<HTMLElement>("[data-text-wrap]");
+  const textarea = document.querySelector<HTMLTextAreaElement>("[data-text]");
+  if (!zone || !input || !mode || !scaleWrap || !scale || !run || !out || !images || !textWrap || !textarea)
+    throw new Error("mr convert mount failed");
+
+  let file: File | null = null;
+
+  const syncMode = () => {
+    scaleWrap.hidden = mode.value !== "images";
+    textWrap.hidden = true;
+    images.hidden = true;
+    out.textContent = "";
+  };
+  mode.addEventListener("change", syncMode);
+
+  const accept = (incoming: FileList | File[]) => {
+    file = Array.from(incoming).find(
+      (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
+    ) ?? null;
+    run.disabled = !file;
+    syncMode();
+    if (file) out.textContent = `Loaded ${file.name} (${formatBytes(file.size)}).`;
+  };
+
+  zone.addEventListener("click", () => input.click());
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      input.click();
+    }
+  });
+  input.addEventListener("change", () => {
+    if (input.files) accept(input.files);
+    input.value = "";
+  });
+  zone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    zone.classList.add("drag");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("drag");
+    if (e.dataTransfer) accept(e.dataTransfer.files);
+  });
+
+  const base = () => fileNameOf(file ?? { name: "page" }).replace(/\.[^./\\]+$/, "");
+
+  const showImages = async (blobs: Blob[]) => {
+    images.textContent = "";
+    for (const [i, blob] of blobs.entries()) {
+      const card = document.createElement("div");
+      card.className = "output-box";
+      card.style.margin = "0";
+      card.style.padding = "0.4rem";
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(blob);
+      img.alt = `Page ${i + 1}`;
+      img.style.width = "100%";
+      img.style.borderRadius = "4px";
+      img.style.display = "block";
+      const meta = document.createElement("div");
+      meta.className = "field-label";
+      meta.style.margin = "0.4rem 0 0.3rem";
+      meta.textContent = `Page ${i + 1} · ${formatBytes(blob.size)}`;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.textContent = "Download PNG";
+      btn.addEventListener("click", () => downloadBlob(blob, `${base()}-page-${i + 1}.png`));
+      card.append(img, meta, btn);
+      images.appendChild(card);
+    }
+    images.hidden = false;
+  };
+
+  run.addEventListener("click", async () => {
+    if (!file) return;
+    run.disabled = true;
+    out.textContent = "Converting…";
+    try {
+      const bytes = await readFileAsArrayBuffer(file);
+      if (mode.value === "images") {
+        const blobs = await convertPdfToImages(bytes, parseScale(scale.value));
+        out.textContent = `Converted ${blobs.length} page${blobs.length === 1 ? "" : "s"} to PNG.`;
+        textWrap.hidden = true;
+        await showImages(blobs);
+      } else {
+        const texts = await extractText(bytes);
+        textarea.value = texts
+          .map((t, i) => `--- page ${i + 1} ---\n${t}`)
+          .join("\n\n")
+          .trim();
+        images.hidden = true;
+        textWrap.hidden = false;
+        out.textContent = `Extracted text from ${texts.length} page${texts.length === 1 ? "" : "s"}.`;
+      }
+    } catch (err) {
+      out.innerHTML = "";
+      const errEl = document.createElement("div");
+      errEl.className = "error-text";
+      errEl.textContent = err instanceof Error ? err.message : "Conversion failed.";
+      out.appendChild(errEl);
+    } finally {
+      run.disabled = !file;
+    }
+  });
+
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.className = "btn";
+  copyBtn.textContent = "Copy all text";
+  copyBtn.style.marginBottom = "0.5rem";
+  copyBtn.addEventListener("click", () => copyTextWithFeedback(textarea.value, copyBtn));
+  textWrap.prepend(copyBtn);
+</script>
