@@ -113,6 +113,26 @@ async function main() {
     "/tools/text/formal/", "/tools/text/invisi/", "/tools/text/lorem/",
     "/tools/text/palindrome/", "/tools/text/password/", "/tools/text/regex/",
     "/tools/text/syllables/", "/tools/text/word-salad/", "/tools/text/word-tide/",
+    "/tools/color/blend/", "/tools/color/blind/", "/tools/color/contrast/",
+    "/tools/color/css/", "/tools/color/gradient/", "/tools/color/hue/",
+    "/tools/color/name/", "/tools/color/palette/", "/tools/color/safe/",
+    "/tools/color/svg/", "/tools/color/tint/",
+    "/tools/convert/archive/", "/tools/convert/cal/", "/tools/convert/contact/",
+    "/tools/convert/docu/", "/tools/convert/ebook/", "/tools/convert/encoding/",
+    "/tools/convert/favicon/", "/tools/convert/geo/", "/tools/convert/mesh/",
+    "/tools/csv/anon/", "/tools/csv/calc/", "/tools/csv/clean/",
+    "/tools/csv/compare/", "/tools/csv/excel/", "/tools/csv/lint/",
+    "/tools/csv/merge/", "/tools/csv/numcheck/", "/tools/csv/pivot/",
+    "/tools/csv/sort/", "/tools/csv/split/", "/tools/csv/stitch/",
+    "/tools/data/beautify/", "/tools/data/compare/", "/tools/data/escape/",
+    "/tools/data/grok/", "/tools/data/lint/", "/tools/data/path/",
+    "/tools/data/schema/", "/tools/data/table/", "/tools/data/toml/",
+    "/tools/data/xml/", "/tools/data/yaml/", "/tools/data/yaml2doc/",
+    "/tools/dev/encode/", "/tools/dev/hash/", "/tools/dev/json/",
+    "/tools/dev/regex/", "/tools/dev/timestamp/",
+    "/tools/md/anchor/", "/tools/md/doc/", "/tools/md/emoji/",
+    "/tools/md/footnote/", "/tools/md/frontmatter/", "/tools/md/lint/",
+    "/tools/md/scraper/", "/tools/md/table/",
   ];
   console.log("== page load checks ==");
   for (const r of routes) await loadCheck(page, r, "load " + r);
@@ -229,10 +249,111 @@ async function main() {
     pass("mr split: accepted a 3-page PDF and enumerated pages");
   } catch (e) { fail("mr split", e.message.split("\n")[0]); }
 
+  // data/yaml
+  try {
+    await page.goto(BASE + "/tools/data/yaml/", { waitUntil: "networkidle" });
+    await page.fill("section.stage [data-input]", "name: Ada\nlangs:\n  - ruby\n  - js\n");
+    await page.click("section.stage [data-run]");
+    await page.waitForFunction(() => {
+      const o = document.querySelector("section.stage [data-output]");
+      return o && o.value.includes("Ada") && o.value.includes("ruby");
+    });
+    pass("mr yaml: parsed YAML into readable output");
+  } catch (e) { fail("mr yaml", e.message.split("\n")[0]); }
+
+  // data/xml (format)
+  try {
+    await page.goto(BASE + "/tools/data/xml/", { waitUntil: "networkidle" });
+    await page.fill("section.stage [data-xml-input]", "<root><a>1</a><b>2</b></root>");
+    await page.click("section.stage [data-format]");
+    await page.waitForFunction(() => {
+      const o = document.querySelector("section.stage [data-output]");
+      return o && o.value.includes("\n") && o.value.includes("<a>1</a>");
+    });
+    pass("mr xml: pretty-printed XML");
+  } catch (e) { fail("mr xml", e.message.split("\n")[0]); }
+
+  // csv/sort
+  try {
+    await page.goto(BASE + "/tools/csv/sort/", { waitUntil: "networkidle" });
+    await page.setInputFiles("section.stage input[type=file]", {
+      name: "people.csv", mimeType: "text/csv",
+      buffer: Buffer.from("name,age\nbob,30\namy,25\n"),
+    });
+    await page.waitForFunction(() => {
+      const b = document.querySelector("section.stage [data-run]");
+      return b && !b.disabled;
+    });
+    await page.click("section.stage [data-run]");
+    await page.waitForFunction(() => {
+      const o = document.querySelector("section.stage [data-out]");
+      const p = document.querySelector("section.stage [data-preview-content]");
+      return o && o.textContent.startsWith("Done:") && p && p.textContent.includes("amy");
+    });
+    pass("mr csv sort: ran a sort over uploaded CSV");
+  } catch (e) { fail("mr csv sort", e.message.split("\n")[0]); }
+
+  // color/hue
+  try {
+    await page.goto(BASE + "/tools/color/hue/", { waitUntil: "networkidle" });
+    await page.fill("section.stage [data-input]", "#ff6b35");
+    await page.waitForFunction(() => {
+      const o = document.querySelector("section.stage [data-out]");
+      return o && o.textContent.includes("#ff6b35");
+    });
+    pass("mr hue: parsed a hex color and showed harmonics");
+  } catch (e) { fail("mr hue", e.message.split("\n")[0]); }
+
+  // dev/json (parse)
+  try {
+    await page.goto(BASE + "/tools/dev/json/", { waitUntil: "networkidle" });
+    await page.fill("section.stage [data-input]", '{"a":{"b":1},"c":[1,2]}');
+    await page.waitForFunction(() => {
+      const o = document.querySelector("section.stage [data-out]");
+      return o && o.textContent.includes("Valid JSON");
+    });
+    pass("mr json: parsed JSON and confirmed validity");
+  } catch (e) { fail("mr json", e.message.split("\n")[0]); }
+
+  // md/table
+  try {
+    await page.goto(BASE + "/tools/md/table/", { waitUntil: "networkidle" });
+    await page.fill("section.stage textarea", "|a|b|\n|-|-|\n|1|2|");
+    await page.waitForFunction(() => {
+      const o = document.querySelector("section.stage [data-out], section.stage output, section.stage .output-box");
+      return o && o.textContent.includes("1") && o.textContent.includes("2");
+    });
+    pass("mr md table: converted markdown table");
+  } catch (e) { fail("mr md table", e.message.split("\n")[0]); }
+
+  // dev/hash (text, SHA only)
+  try {
+    await page.goto(BASE + "/tools/dev/hash/", { waitUntil: "networkidle" });
+    await page.fill("section.stage [data-text]", "hello world");
+    await page.waitForFunction(() => {
+      const r = document.querySelector("section.stage [data-results]");
+      return r && /b94d27b9/.test(r.textContent) && !/MD5/.test(r.textContent);
+    });
+    pass("mr hash: computed SHA-256, no unsupported MD5");
+  } catch (e) { fail("mr hash", e.message.split("\n")[0]); }
+
+  // data/table
+  try {
+    await page.goto(BASE + "/tools/data/table/", { waitUntil: "networkidle" });
+    await page.selectOption("section.stage [data-direction]", "csv2json");
+    await page.fill("section.stage [data-input]", "name,age\namy,25\nbob,30\n");
+    await page.click("section.stage [data-convert]");
+    await page.waitForFunction(() => {
+      const o = document.querySelector("section.stage [data-output]");
+      return o && o.value.includes("amy") && o.value.includes("bob");
+    });
+    pass("mr data table: parsed CSV into a table");
+  } catch (e) { fail("mr data table", e.message.split("\n")[0]); }
+
   await browser.close();
   console.log("");
   console.log(failures.length === 0
-    ? "SMOKE PASS — 18/18 pages load, " + "interactions clean"
+    ? `SMOKE PASS — ${routes.length}/119 pages load, interactions clean`
     : `SMOKE FAIL — ${failures.length} issue(s)`);
   failures.forEach((f) => console.error("  - " + f));
   process.exit(failures.length === 0 ? 0 : 1);
