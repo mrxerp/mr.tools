@@ -2,8 +2,10 @@
   "name": "mr-tools",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "description": "mr tools — tiny browser-only tools that run entirely on the client.",
+  "license": "MIT",
+  "repository": "github:mrxerp/mr.tools",
+  "homepage": "https://mr.tools",
   "scripts": {
     "predev": "node scripts/build-tool-index.mjs",
     "dev": "astro dev",
