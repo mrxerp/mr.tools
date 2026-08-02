@@ -1,5 +1,5 @@
-import { strictEqual, ok } from "node:assert";
-import { generateFavicons, formatBytes, FAVICON_SIZES } from "./tool.ts";
+import { strictEqual } from "node:assert";
+import { formatBytes, FAVICON_SIZES } from "./tool.ts";
 
 export async function runTest() {
   strictEqual(FAVICON_SIZES.favicon.includes(16), true);

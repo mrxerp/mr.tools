@@ -91,7 +91,6 @@
         text = await file.text();
         contacts = parseContacts(text, "csv");
       } else {
-        const data = new Uint8Array(await file.arrayBuffer());
         contacts = parseContacts("", "xlsx");
       }
 

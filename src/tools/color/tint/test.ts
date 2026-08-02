@@ -7,7 +7,6 @@ import {
   generateTailwindConfig,
   getContrastRatios,
   findAccessiblePairs,
-  type ColorScale,
 } from "./tool.ts";
 
 export async function runTest() {

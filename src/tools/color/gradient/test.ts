@@ -7,7 +7,6 @@ import {
   createDefaultGradient,
   PRESETS,
   parseGradientCSS,
-  type GradientConfig,
 } from "./tool.ts";
 
 export async function runTest() {

@@ -57,7 +57,6 @@ function fakeEmail(original: string, preserveDomain: boolean): string {
 }
 
 function fakePhone(original: string, preserveFormat: boolean): string {
-  const digits = original.replace(/\D/g, "");
   const area = String(Math.floor(Math.random() * 900) + 100);
   const exchange = String(Math.floor(Math.random() * 900) + 100);
   const line = String(Math.floor(Math.random() * 9000) + 1000).padStart(4, "0");
@@ -182,18 +181,6 @@ function parseCSV(text: string): string[][] {
   }
   if (currentField || currentRow.length > 0) { currentRow.push(currentField); rows.push(currentRow); }
   return rows;
-}
-
-function stringifyCSV(headers: string[], rows: string[][]): string {
-  const escape = (field: string) => {
-    if (field.includes(",") || field.includes('"') || field.includes("\n") || field.includes("\r")) {
-      return '"' + field.replace(/"/g, '""') + '"';
-    }
-    return field;
-  };
-  const lines = [headers.map(escape).join(",")];
-  for (const row of rows) { lines.push(row.map(escape).join(",")); }
-  return lines.join("\n");
 }
 
 export async function anonymize(

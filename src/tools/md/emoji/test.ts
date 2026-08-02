@@ -1,4 +1,4 @@
-import { strictEqual, deepStrictEqual } from "node:assert";
+import { strictEqual } from "node:assert";
 import { shortcodeToUnicode, unicodeToShortcode, searchEmoji, getAllEmoji } from "./tool.ts";
 
 export async function runTest() {

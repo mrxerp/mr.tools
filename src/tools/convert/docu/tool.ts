@@ -92,9 +92,6 @@ function parseCoreProps(entries: Map<string, Uint8Array>): DocxResult["metadata"
   if (!coreXml) return {};
 
   const doc = parseXml(new TextDecoder().decode(coreXml));
-  const ns = { cp: "http://schemas.openxmlformats.org/package/2006/metadata/core-properties",
-    dc: "http://purl.org/dc/elements/1.1/",
-    dcterms: "http://purl.org/dc/terms/" };
 
   const getText = (selector: string) => doc.querySelector(selector)?.textContent?.trim();
 
@@ -116,7 +113,7 @@ function getMimeType(ext: string): string {
   return types[ext] || "application/octet-stream";
 }
 
-function convertToHtml(doc: Document, images: Map<string, { data: Uint8Array; mimeType: string }>, stylesXml: Uint8Array | undefined, numberingXml: Uint8Array | undefined): string {
+function convertToHtml(doc: Document, _images: Map<string, { data: Uint8Array; mimeType: string }>, _stylesXml: Uint8Array | undefined, _numberingXml: Uint8Array | undefined): string {
   const body = doc.querySelector("w\\:body, body");
   if (!body) return "";
 
@@ -124,8 +121,6 @@ function convertToHtml(doc: Document, images: Map<string, { data: Uint8Array; mi
   const paragraphs = Array.from(body.querySelectorAll("w\\:p, p"));
 
   let inList = false;
-  let listType = "";
-  let listLevel = 0;
 
   for (const p of paragraphs) {
     const pStyle = p.querySelector("w\\:pStyle")?.getAttribute("w\\:val");

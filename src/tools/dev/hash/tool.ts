@@ -1,4 +1,4 @@
-const subtle = globalThis.crypto?.subtle ?? (await import("crypto")).subtle;
+const subtle = globalThis.crypto.subtle;
 
 export type HashAlgorithm = "SHA-256" | "SHA-384" | "SHA-512";
 
@@ -38,8 +38,7 @@ async function hashBuffer(
     );
   }
 
-  console.log('[dev/hash] algorithm:', key ? 'HMAC' : options.algorithm);
-if (key) {
+  if (key) {
     const sigBuffer = await subtle.sign("HMAC", key, buffer);
     return Array.from(new Uint8Array(sigBuffer))
       .map((b) => b.toString(16).padStart(2, "0"))
@@ -74,7 +73,6 @@ export async function computeFileHashes(
   hmacKey?: string,
   onProgress?: (progress: number) => void,
 ): Promise<HashResult[]> {
-  const chunkSize = 1024 * 1024; // 1MB chunks
   const fileSize = file.size;
   let loaded = 0;
 
@@ -113,10 +111,7 @@ export async function computeFileHashes(
       loaded += value.byteLength;
       onProgress?.(loaded / fileSize);
 
-      for (const [algo, state] of hashStates) {
-        const algorithm = state.hash
-          ? { name: "HMAC", hash: algo }
-          : algo;
+      for (const [_algo, _state] of hashStates) {
         // Note: For incremental hashing, we'd need to use SubtleCrypto's streaming
         // but Web Crypto doesn't support streaming digest directly.
         // We'll accumulate chunks for now.
@@ -135,7 +130,7 @@ export async function computeFileHashesIncremental(
   file: File,
   algorithms: HashAlgorithm[] = ["SHA-256", "SHA-384", "SHA-512"],
   hmacKey?: string,
-  onProgress?: (progress: number) => void,
+  _onProgress?: (progress: number) => void,
 ): Promise<HashResult[]> {
   // Web Crypto doesn't support incremental digest directly
   // So we read in chunks but still compute at the end

@@ -49,11 +49,10 @@
     shuffleColors,
     lockColors,
     randomColor,
-    type Color,
     type Palette,
   } from "./tool.ts";
 import { copyTextWithFeedback } from "@/lib/clipboard";
-import { downloadText, downloadBlob } from "@/lib/download";
+import { downloadBlob } from "@/lib/download";
 
   const seedColor = document.querySelector<HTMLInputElement>("[data-seed-color]")!;
   const seedHex = document.querySelector<HTMLInputElement>("[data-seed-hex]")!;
@@ -89,7 +88,7 @@ import { downloadText, downloadBlob } from "@/lib/download";
     const colors = [...palette.harmonious.analogous, ...palette.harmonious.complementary, ...palette.harmonious.triadic, ...palette.harmonious.tetradic, ...palette.monochromatic];
     const allColors = [palette.base, ...colors];
 
-    allColors.forEach((color, i) => {
+    allColors.forEach((color, _i) => {
       const card = document.createElement("div");
       card.className = "card";
       card.style.padding = "0.5rem";

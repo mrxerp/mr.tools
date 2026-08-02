@@ -7,7 +7,6 @@ import {
   sortColorsByHue,
   sortColorsByLightness,
   colorToFormat,
-  type ExtractedColor,
 } from "./tool.ts";
 
 export async function runTest() {

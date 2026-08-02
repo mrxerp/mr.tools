@@ -262,7 +262,7 @@ function generateHashtags(name: string, hex: string, style: NamingStyle): string
   ];
 }
 
-function generateFacts(hex: string, name: string): string[] {
+function generateFacts(hex: string, _name: string): string[] {
   const { r, g, b } = hexToRgb(hex);
   const hsl = rgbToHsl(r, g, b);
   const facts: string[] = [];

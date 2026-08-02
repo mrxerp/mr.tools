@@ -19,32 +19,6 @@ export interface GradientPreset {
   config: GradientConfig;
 }
 
-function parseColor(color: string): { r: number; g: number; b: number } | null {
-  const clean = color.replace(/^#/, "");
-  if (clean.length === 3) {
-    return {
-      r: parseInt(clean[0] + clean[0], 16),
-      g: parseInt(clean[1] + clean[1], 16),
-      b: parseInt(clean[2] + clean[2], 16),
-    };
-  }
-  if (clean.length === 6) {
-    return {
-      r: parseInt(clean.slice(0, 2), 16),
-      g: parseInt(clean.slice(2, 4), 16),
-      b: parseInt(clean.slice(4, 6), 16),
-    };
-  }
-  return null;
-}
-
-function interpolateColor(c1: { r: number; g: number; b: number }, c2: { r: number; g: number; b: number }, t: number): string {
-  const r = Math.round(c1.r + (c2.r - c1.r) * t);
-  const g = Math.round(c1.g + (c2.g - c1.g) * t);
-  const b = Math.round(c1.b + (c2.b - c1.b) * t);
-  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
-}
-
 export function generateGradientCSS(config: GradientConfig): string {
   const sortedStops = [...config.stops].sort((a, b) => a.position - b.position);
   const stopsStr = sortedStops.map(s => `${s.color} ${Math.round(s.position * 100)}%`).join(", ");

@@ -136,7 +136,7 @@ function xmlToJson(element: Element): unknown {
   return obj;
 }
 
-export function diff(left: unknown, right: unknown, mode: DiffMode): DiffResult {
+export function diff(left: unknown, right: unknown, _mode: DiffMode): DiffResult {
   const differences: DiffEntry[] = [];
   const leftKeys = new Set<string>();
   const rightKeys = new Set<string>();

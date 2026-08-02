@@ -19,7 +19,6 @@
 <script>
   import { fixFrontMatter, batchFix } from "./tool.ts";
   import { copyTextWithFeedback } from "@/lib/clipboard";
-  import { downloadText } from "@/lib/download";
 
   const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
   const output = document.querySelector<HTMLDivElement>("[data-output]")!;

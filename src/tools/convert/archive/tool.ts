@@ -53,12 +53,9 @@ async function readZip(data: Uint8Array): Promise<ArchiveResult> {
     if (sig !== 0x04034b50) break;
 
     if (offset + 30 > data.byteLength) break;
-    const version = view.getUint16(offset + 4, true);
     const flags = view.getUint16(offset + 6, true);
-    const compression = view.getUint16(offset + 8, true);
     const modTime = view.getUint16(offset + 10, true);
     const modDate = view.getUint16(offset + 12, true);
-    const crc32 = view.getUint32(offset + 14, true);
     const compressedSize = view.getUint32(offset + 16, true);
     const uncompressedSize = view.getUint32(offset + 18, true);
     const fileNameLen = view.getUint16(offset + 20, true);
@@ -93,7 +90,6 @@ async function readZip(data: Uint8Array): Promise<ArchiveResult> {
 async function readTar(data: Uint8Array): Promise<ArchiveResult> {
   const entries: ArchiveEntry[] = [];
   let offset = 0;
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   let totalSize = 0;
 
   while (offset + 512 <= data.byteLength) {
@@ -174,7 +170,6 @@ async function extractZip(data: Uint8Array, files: Map<string, Uint8Array>, pass
     const flags = view.getUint16(offset + 6, true);
     const compression = view.getUint16(offset + 8, true);
     const compressedSize = view.getUint32(offset + 16, true);
-    const uncompressedSize = view.getUint32(offset + 18, true);
     const fileNameLen = view.getUint16(offset + 20, true);
     const extraFieldLen = view.getUint16(offset + 22, true);
 
@@ -216,7 +211,6 @@ async function extractZip(data: Uint8Array, files: Map<string, Uint8Array>, pass
 
 async function extractTar(data: Uint8Array, files: Map<string, Uint8Array>, selectedEntries?: string[]): Promise<void> {
   let offset = 0;
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
   while (offset + 512 <= data.byteLength) {
     const nameBytes = new Uint8Array(data.buffer, data.byteOffset + offset, 100);
@@ -268,7 +262,7 @@ export async function createArchive(options: CreateArchiveOptions): Promise<Uint
   }
 }
 
-async function createZip(fileList: Array<{ name: string; data: Uint8Array }>, level: number, password?: string): Promise<Uint8Array> {
+async function createZip(fileList: Array<{ name: string; data: Uint8Array }>, _level: number, _password?: string): Promise<Uint8Array> {
   const encoder = new TextEncoder();
   const parts: Uint8Array[] = [];
   let offset = 0;
@@ -404,7 +398,7 @@ async function createTar(fileList: Array<{ name: string; data: Uint8Array }>): P
   return result;
 }
 
-async function createGzip(data: Uint8Array, level: number): Promise<Uint8Array> {
+async function createGzip(data: Uint8Array, _level: number): Promise<Uint8Array> {
   const stream = new Response(data.slice()).body!.pipeThrough(new CompressionStream("gzip"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }

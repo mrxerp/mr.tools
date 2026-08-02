@@ -14,10 +14,6 @@ export interface Harmony {
   colors: Color[];
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const clean = hex.replace(/^#/, "");
   if (clean.length === 3) {
@@ -129,29 +125,6 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${[r, g, b].map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, "0")).join("")}`;
 }
 
-function hexToHsl(hex: string): { h: number; s: number; l: number } {
-  const rgb = hexToRgb(hex);
-  return rgbToHsl(rgb.r, rgb.g, rgb.b);
-}
-
-function hexToLab(hex: string): { l: number; a: number; b: number } {
-  const rgb = hexToRgb(hex);
-  return rgbToLab(rgb.r, rgb.g, rgb.b);
-}
-
-function hexToOklch(hex: string): { l: number; c: number; h: number } {
-  const rgb = hexToRgb(hex);
-  return rgbToOklch(rgb.r, rgb.g, rgb.b);
-}
-
-function generateColorFromPixel(r: number, g: number, b: number): Color {
-  const hex = rgbToHex(r, g, b);
-  const hsl = rgbToHsl(r, g, b);
-  const lab = rgbToLab(r, g, b);
-  const oklch = rgbToOklch(r, g, b);
-  return { hex, rgb: { r, g, b }, hsl, lab, oklch, name: "" };
-}
-
 function generateAnalogous(baseHsl: { h: number; s: number; l: number }, count = 5): { h: number; s: number; l: number }[] {
   const colors: { h: number; s: number; l: number }[] = [];
   const step = 30;
@@ -169,7 +142,7 @@ function generateComplementary(baseHsl: { h: number; s: number; l: number }, cou
   ].slice(0, count);
 }
 
-function generateTriadic(baseHsl: { h: number; s: number; l: number }, count = 3): { h: number; s: number; l: number }[] {
+function generateTriadic(baseHsl: { h: number; s: number; l: number }, _count = 3): { h: number; s: number; l: number }[] {
   return [
     { h: baseHsl.h, s: baseHsl.s, l: baseHsl.l },
     { h: (baseHsl.h + 120) % 360, s: baseHsl.s, l: baseHsl.l },
@@ -177,7 +150,7 @@ function generateTriadic(baseHsl: { h: number; s: number; l: number }, count = 3
   ];
 }
 
-function generateTetradic(baseHsl: { h: number; s: number; l: number }, count = 4): { h: number; s: number; l: number }[] {
+function generateTetradic(baseHsl: { h: number; s: number; l: number }, _count = 4): { h: number; s: number; l: number }[] {
   return [
     { h: baseHsl.h, s: baseHsl.s, l: baseHsl.l },
     { h: (baseHsl.h + 90) % 360, s: baseHsl.s, l: baseHsl.l },
@@ -299,7 +272,7 @@ export function findSimilarColors(color: Color, allColors: Color[], maxDistance 
 
 export function generateColorPaletteFromImage(
   imageData: ImageData | null,
-  harmonyTypes: string[] = ["analogous", "complementary", "triadic", "tetradic"]
+  _harmonyTypes: string[] = ["analogous", "complementary", "triadic", "tetradic"]
 ): { [key: string]: ReturnType<typeof generateColorPalette> } {
   if (!imageData) return {};
   const colorMap = new Map<string, number>();

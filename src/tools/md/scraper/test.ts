@@ -1,5 +1,5 @@
 import { strictEqual } from "node:assert";
-import { cleanMarkdown, extractArticle } from "./tool.ts";
+import { cleanMarkdown } from "./tool.ts";
 
 export async function runTest() {
   const messy = `Cookie Consent: We use cookies to improve your experience.

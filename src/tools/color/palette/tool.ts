@@ -95,10 +95,6 @@ function hslToRgb(h: number, s: number, l: number): { r: number; g: number; b: n
   };
 }
 
-function rgbToHslDirect(r: number, g: number, b: number): { h: number; s: number; l: number } {
-  return rgbToHsl(r, g, b);
-}
-
 function rgbToHex(r: number, g: number, b: number): string {
   return `#${[r, g, b].map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, "0")).join("")}`;
 }
@@ -109,7 +105,7 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } {
 }
 
 function lockColors(colors: Color[]): Color[] {
-  return colors.map((c, i) => ({
+  return colors.map((c, _i) => ({
     ...c,
     hex: c.hex,
   }));
@@ -141,7 +137,7 @@ function generateComplementary(baseHsl: { h: number; s: number; l: number }, cou
   ].slice(0, count);
 }
 
-function generateTriadic(baseHsl: { h: number; s: number; l: number }, count = 3): { h: number; s: number; l: number }[] {
+function generateTriadic(baseHsl: { h: number; s: number; l: number }, _count = 3): { h: number; s: number; l: number }[] {
   return [
     { h: baseHsl.h, s: baseHsl.s, l: baseHsl.l },
     { h: (baseHsl.h + 120) % 360, s: baseHsl.s, l: baseHsl.l },
@@ -149,7 +145,7 @@ function generateTriadic(baseHsl: { h: number; s: number; l: number }, count = 3
   ];
 }
 
-function generateTetradic(baseHsl: { h: number; s: number; l: number }, count = 4): { h: number; s: number; l: number }[] {
+function generateTetradic(baseHsl: { h: number; s: number; l: number }, _count = 4): { h: number; s: number; l: number }[] {
   return [
     { h: baseHsl.h, s: baseHsl.s, l: baseHsl.l },
     { h: (baseHsl.h + 90) % 360, s: baseHsl.s, l: baseHsl.l },
@@ -340,32 +336,6 @@ function generateTailwindConfig(palette: Palette, colorName = "custom"): string 
   return JSON.stringify({ theme: { extend: { colors: { [colorName]: colors } } } }, null, 2);
 }
 
-function oklchToRgb(l: number, c: number, h: number): { r: number; g: number; b: number } {
-  let hRad = h * Math.PI / 180;
-  let a = c * Math.cos(hRad);
-  let b = c * Math.sin(hRad);
-  let l0 = l + 0.3965 * a + 0.2158 * b;
-  let m0 = l - 0.1077 * a - 0.6687 * b;
-  let s0 = l - 0.8973 * a + 0.4112 * b;
-
-  let l1 = 0.2104 * l0 + 0.5362 * m0 - 0.0140 * s0;
-  let m1 = 0.7876 * l0 - 0.9567 * m0 + 0.1176 * s0;
-  let s1 = -0.2042 * l0 - 0.3676 * m0 + 1.6614 * s0;
-
-  let r = 1.2270 * l1 - 1.6026 * m1 + 0.0456 * s1;
-  let g = -0.0052 * l1 - 1.0424 * m1 + 1.0476 * s1;
-  b = 0.1700 * l1 + 1.4056 * m1 - 0.1177 * s1;
-
-  r = Math.pow(Math.max(0, r), 2.4);
-  g = Math.pow(Math.max(0, g), 2.4);
-  b = Math.pow(Math.max(0, b), 2.4);
-  r = Math.max(0, Math.min(1, r)) * 255;
-  g = Math.max(0, Math.min(1, g)) * 255;
-  b = Math.max(0, Math.min(1, b)) * 255;
-
-  return { r, g, b };
-}
-
 function rgbToOklch(r: number, g: number, b: number): { l: number; c: number; h: number } {
   const _r = r / 255;
   const _g = g / 255;
@@ -388,11 +358,6 @@ function rgbToOklch(r: number, g: number, b: number): { l: number; c: number; h:
     c: Math.max(0, Math.min(1, c)) * 150,
     h: (h * 180 / Math.PI + 360) % 360,
   };
-}
-
-function hexToOklch(hex: string): { l: number; c: number; h: number } {
-  const { r, g, b } = hexToRgb(hex);
-  return rgbToOklch(r, g, b);
 }
 
 function randomColor(): Color {

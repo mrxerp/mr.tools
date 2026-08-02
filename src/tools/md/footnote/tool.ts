@@ -9,7 +9,6 @@ const FOOTNOTE_DEF_RE = /^\[\^([^\]]+)\]:\s*(.*)$/gm;
 export function renumberFootnotes(markdown: string): FootnoteResult {
   const warnings: string[] = [];
   const refs = new Map<string, number>();
-  let refCounter = 0;
   const defs = new Map<string, string>();
   let defOrder: string[] = [];
 

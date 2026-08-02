@@ -4,7 +4,6 @@ import {
   inferSingleSchema,
   mergeSchemas,
   validateSchema,
-  validateValue,
   checkType,
   formatSchema,
   isEmail,

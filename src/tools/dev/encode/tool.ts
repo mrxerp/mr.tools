@@ -91,7 +91,7 @@ export function encodeHtmlEntities(input: string): string {
 }
 
 export function decodeUnicodeEscapes(input: string): string {
-  return input.replace(/\\u([0-9a-fA-F]{4})/g, (match, hex) => {
+  return input.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex) => {
     return String.fromCharCode(parseInt(hex, 16));
   });
 }

@@ -4,7 +4,6 @@ import {
   evaluateExpression,
   tokenize,
   getPage,
-  flattenTree,
   searchTree,
   calculateSize,
 } from "./tool.ts";
@@ -41,7 +40,6 @@ export async function runTest() {
   deepStrictEqual(tokenize("[0]"), [0]);
 
   // getPage
-  const flat = flattenTree(result.tree);
   const page1 = getPage(result.tree, 0, 2);
   strictEqual(page1.length, 2);
 

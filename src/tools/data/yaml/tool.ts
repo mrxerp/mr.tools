@@ -16,17 +16,6 @@ export interface ConvertOptions {
   quotingStyle?: "double" | "single" | "minimal";
 }
 
-const YAML_TYPE_TAGS = new Set([
-  "!!str",
-  "!!int",
-  "!!float",
-  "!!bool",
-  "!!null",
-  "!!timestamp",
-  "!!seq",
-  "!!map",
-]);
-
 export function parseYaml(input: string): YamlResult {
   if (!input.trim()) {
     return { valid: true, data: null, yaml: "" };

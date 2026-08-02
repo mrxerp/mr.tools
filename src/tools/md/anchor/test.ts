@@ -1,4 +1,4 @@
-import { strictEqual, deepStrictEqual } from "node:assert";
+import { strictEqual } from "node:assert";
 import { processMarkdown } from "./tool.ts";
 
 export async function runTest() {

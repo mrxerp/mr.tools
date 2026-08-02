@@ -60,7 +60,6 @@
 <script>
   import { readArchive, extractArchive, createArchive, formatBytes } from "./tool.ts";
   import { downloadArrayBuffer } from "@/lib/download";
-  import { copyTextWithFeedback } from "@/lib/clipboard";
 
   const modeSel = document.querySelector<HTMLSelectElement>("[data-mode]")!;
   const extractUI = document.querySelector<HTMLElement>("[data-extract-ui]")!;
@@ -287,7 +286,6 @@
 
       createdArchive = await createArchive({ format, files: fileList, password, level: 6 });
 
-      const ext = format === "gzip" ? "gz" : format;
       downloadBtn.style.display = "";
       createBtn.style.display = "none";
       outBox.textContent = `Archive created (${formatBytes(createdArchive.length)}). Click Download.`;

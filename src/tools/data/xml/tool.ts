@@ -42,15 +42,16 @@ async function initDOM() {
     return;
   }
 
+  // ponytail: Node fallback keeps xml tests green (Node has no DOMParser); browsers
+  // return above before reaching this, so the Vite "module externalized" warning is
+  // harmless in the shipped bundle. Drop it only if tests get a browser-shimmed parser.
   try {
     const { createRequire } = await import("module");
     const require = createRequire(import.meta.url);
     const xmldom = require("xmldom");
-    console.log('[xml] xmldom loaded:', Object.keys(xmldom));
     DOMParserImpl = xmldom.DOMParser;
     XMLSerializerImpl = xmldom.XMLSerializer;
     XSLTProcessorImpl = xmldom.XSLTProcessor;
-    console.log('[xml] DOMParserImpl:', typeof DOMParserImpl);
   } catch (e) {
     console.error('[xml] xmldom load failed:', e instanceof Error ? e.message : e);
   }
@@ -144,10 +145,9 @@ function xmlToTree(element: any): XmlNode {
   return node;
 }
 
-export async function validateXsd(xmlInput: string, xsdInput: string): Promise<XsdResult> {
+export async function validateXsd(_xmlInput: string, xsdInput: string): Promise<XsdResult> {
   try {
     const parser = new (await getParser())();
-    const xmlDoc = parser.parseFromString(xmlInput, "application/xml");
     const xsdDoc = parser.parseFromString(xsdInput, "application/xml");
 
     const xsdError = xsdDoc.getElementsByTagName("parsererror");

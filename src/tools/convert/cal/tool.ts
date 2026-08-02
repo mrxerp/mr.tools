@@ -23,7 +23,7 @@ export interface ParseOptions {
   timezone?: string;
 }
 
-export function parseCsv(text: string, options: ParseOptions = {}): CalendarEvent[] {
+export function parseCsv(text: string, _options: ParseOptions = {}): CalendarEvent[] {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
 
@@ -66,7 +66,7 @@ export function parseCsv(text: string, options: ParseOptions = {}): CalendarEven
   return events;
 }
 
-export function parseXlsx(data: Uint8Array, options: ParseOptions = {}): CalendarEvent[] {
+export function parseXlsx(data: Uint8Array, _options: ParseOptions = {}): CalendarEvent[] {
   const workbook = XLSX.read(data, { type: "array" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) return [];

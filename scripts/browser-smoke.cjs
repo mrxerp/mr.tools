@@ -77,7 +77,6 @@ async function loadCheck(page, route, label) {
   // async errors can surface after mount — give scripts a beat
   await page.waitForTimeout(600);
   const mounted = await page.evaluate(() => {
-    const results = document.querySelector("section.stage [data-results], section.stage output, section.stage .output-box");
     return { hasSearch: !!document.querySelector("input[type=search]"), hasBadge: document.body.textContent.includes("nothing uploads") };
   });
   if (errs.length) { fail(label, errs.slice(0, 2).join("; ")); return; }
@@ -153,7 +152,6 @@ async function main() {
 
   console.log("== deep interactions ==");
   const fileInput = 'section.stage input[type=file]';
-  const primaryBtn = 'section.stage .btn-primary, section.stage .btn[type=button]';
 
   // text/case
   try {

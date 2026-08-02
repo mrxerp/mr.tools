@@ -47,13 +47,11 @@ export function parseMarkdown(markdown: string): Array<{ type: string; content: 
   const blocks: Array<{ type: string; content: string; level?: number }> = [];
   let inCodeBlock = false;
   let codeContent = "";
-  let codeLang = "";
 
   for (const line of lines) {
     if (line.startsWith("```")) {
       if (!inCodeBlock) {
         inCodeBlock = true;
-        codeLang = line.slice(3).trim();
         codeContent = "";
       } else {
         inCodeBlock = false;

@@ -73,7 +73,6 @@
     createDefaultGradient,
     PRESETS,
     type GradientConfig,
-    type GradientStop,
   } from "./tool.ts";
   import { copyTextWithFeedback } from "@/lib/clipboard";
   import { downloadBlob } from "@/lib/download";
@@ -94,7 +93,6 @@
   const conicFields = document.querySelector<HTMLDivElement>("[data-conic-fields]")!;
 
   let config: GradientConfig = createDefaultGradient("linear");
-  let stopCounter = 0;
 
   function updateUI() {
     typeInputs.forEach(input => {
@@ -297,4 +295,5 @@
   });
 
   updateUI();
+  renderPresets();
 </script>

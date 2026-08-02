@@ -58,7 +58,7 @@
   });
 
   async function convertToDocx(blocks: ReturnType<typeof parseMarkdown>, template: typeof TEMPLATES[0]) {
-    const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = await import("docx");
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import("docx");
     const headingLevelMap: Record<number, (typeof HeadingLevel)[keyof typeof HeadingLevel]> = {
       1: HeadingLevel.HEADING_1,
       2: HeadingLevel.HEADING_2,

@@ -1,5 +1,5 @@
 import { strictEqual } from "node:assert";
-import { convertTimestamp, parseInput, formatRelative } from "./tool.ts";
+import { convertTimestamp, formatRelative } from "./tool.ts";
 
 export async function runTest() {
   // Test Unix timestamp (seconds)

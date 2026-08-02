@@ -74,18 +74,13 @@
 
 <script>
   import {
-    simulateCVD,
     simulatePaletteCVD,
     checkPaletteRisks,
-    checkAllCVDTypes,
     generateCVDReport,
     simulateImageData,
     getCVDName,
     type CVDType,
   } from "./tool.ts";
-  import { copyTextWithFeedback } from "@/lib/clipboard";
-import { downloadBlob } from "@/lib/download";
-
   const imageInputSection = document.querySelector<HTMLDivElement>("[data-image-input]")!;
   const paletteInputSection = document.querySelector<HTMLDivElement>("[data-palette-input]")!;
   const dropZone = document.querySelector<HTMLDivElement>("[data-drop-zone]")!;

@@ -1,5 +1,5 @@
-import { strictEqual, ok } from "node:assert";
-import { parseDocx, formatBytes } from "./tool.ts";
+import { strictEqual } from "node:assert";
+import { formatBytes } from "./tool.ts";
 
 export async function runTest() {
   // Test formatBytes

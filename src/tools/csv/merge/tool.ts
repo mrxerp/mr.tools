@@ -59,20 +59,6 @@ function parseCSV(text: string): string[][] {
   return rows;
 }
 
-function stringifyCSV(headers: string[], rows: string[][]): string {
-  const escape = (field: string) => {
-    if (field.includes(",") || field.includes('"') || field.includes("\n") || field.includes("\r")) {
-      return '"' + field.replace(/"/g, '""') + '"';
-    }
-    return field;
-  };
-  const lines = [headers.map(escape).join(",")];
-  for (const row of rows) {
-    lines.push(row.map(escape).join(","));
-  }
-  return lines.join("\n");
-}
-
 export async function mergeSpreadsheets(
   inputs: Array<{ data: string | Uint8Array; isXlsx: boolean; name: string }>,
   options: MergeOptions

@@ -58,7 +58,6 @@ export function cleanMarkdown(input: string): ScraperResult {
 }
 
 export function extractArticle(text: string): ScraperResult {
-  const warnings: string[] = [];
   let content = text;
 
   // Try to find main content by removing common boilerplate

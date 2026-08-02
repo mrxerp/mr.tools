@@ -39,14 +39,13 @@
 </section>
 
 <script>
-  import { parseDocx, formatBytes } from "./tool.ts";
+  import { parseDocx } from "./tool.ts";
   import { downloadText } from "@/lib/download";
 
   const zone = document.querySelector<HTMLElement>("[data-zone]")!;
   const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
   const optionsDiv = document.querySelectorAll<HTMLElement>("[data-options]");
   const formatSel = document.querySelector<HTMLSelectElement>("[data-format]")!;
-  const extractImagesCheckbox = document.querySelector<HTMLInputElement>("[data-extract-images]")!;
   const convertBtn = document.querySelector<HTMLButtonElement>("[data-convert]")!;
   const downloadBtn = document.querySelector<HTMLButtonElement>("[data-download]")!;
   const previewBox = document.querySelector<HTMLElement>("[data-preview]")!;

@@ -398,7 +398,6 @@ function writeStl(mesh: Mesh): Uint8Array {
   const faceCount = mesh.faces.length;
   const buffer = new ArrayBuffer(84 + faceCount * 50);
   const view = new DataView(buffer);
-  const encoder = new TextEncoder();
 
   view.setUint32(0, 0x3D4D4853, true);
   view.setUint32(80, faceCount, true);

@@ -49,10 +49,6 @@ function srgbToLinear(c: number): number {
   return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
 }
 
-function linearToSrgb(c: number): number {
-  return c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-}
-
 function rgbToOklch(r: number, g: number, b: number): { l: number; c: number; h: number } {
   const [R, G, B] = [r / 255, g / 255, b / 255];
   const adjust = (c: number): number => c > 0.04045 ? Math.pow((c + 0.055) / 1.055, 2.4) : c / 12.92;
@@ -113,7 +109,7 @@ function generateScale(
     chromaMultiplier?: number;
   } = {}
 ): ColorScale {
-  const { lightnessRange = [5, 98], steps = 11, chromaMultiplier = 1 } = options;
+  const { lightnessRange = [5, 98], chromaMultiplier = 1 } = options;
   const scaleLevels = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
   const result: Record<string, string> = {};
 
@@ -122,7 +118,7 @@ function generateScale(
 
   // Compute target lightness values that ensure base color is at level 500
   // We interpolate from lightnessRange[0] to baseL, then from baseL to lightnessRange[1]
-  const targetLightness = scaleLevels.map((level, i) => {
+  const targetLightness = scaleLevels.map((_level, i) => {
     if (i <= baseIndex) {
       // Interpolate from lightnessRange[0] to baseL
       const t = i / baseIndex;
@@ -134,7 +130,7 @@ function generateScale(
     }
   });
 
-  const targetChroma = scaleLevels.map((level, i) => {
+  const targetChroma = scaleLevels.map((_level, i) => {
     if (i === baseIndex) {
       return baseC; // Exact base chroma at level 500
     }

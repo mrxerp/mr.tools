@@ -1,5 +1,5 @@
 import { strictEqual, ok } from "node:assert";
-import { convertGeo, getElevationProfile, formatBytes } from "./tool.ts";
+import { getElevationProfile, formatBytes } from "./tool.ts";
 
 export async function runTest() {
   // Test formatBytes

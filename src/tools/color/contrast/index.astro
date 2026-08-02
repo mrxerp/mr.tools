@@ -62,8 +62,7 @@
 </style>
 
 <script>
-  import { contrastRatio, checkContrast, suggestFixes, hexToRgb } from "./tool.ts";
-  import { copyTextWithFeedback } from "@/lib/clipboard";
+  import { contrastRatio, checkContrast, suggestFixes } from "./tool.ts";
 
   const fgColor = document.querySelector<HTMLInputElement>("[data-fg-color]")!;
   const fgHex = document.querySelector<HTMLInputElement>("[data-fg-hex]")!;

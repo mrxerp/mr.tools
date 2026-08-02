@@ -8,13 +8,10 @@ import {
   findSafeColors,
   generateCVDReport,
   getCVDName,
-  type CVDType,
 } from "./tool.ts";
 
 export async function runTest() {
   const red = "#ff0000";
-  const green = "#00ff00";
-  const blue = "#0000ff";
 
   const protoRed = simulateCVD(red, "protanopia");
   const deutRed = simulateCVD(red, "deuteranopia");

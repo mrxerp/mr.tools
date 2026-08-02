@@ -10,8 +10,6 @@ import {
   lightenColor,
   darkenColor,
   mixColors,
-  type Color,
-  type Palette,
 } from "./tool.ts";
 
 export async function runTest() {

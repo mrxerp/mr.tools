@@ -6,6 +6,7 @@ export interface EpubMetadata {
   publisher?: string;
   date?: string;
   description?: string;
+  coverId?: string;
   coverImage?: { data: Uint8Array; mimeType: string };
 }
 
@@ -45,11 +46,6 @@ function getText(node: Element | null, selector: string): string {
   return el?.textContent?.trim() || "";
 }
 
-function getAttr(node: Element | null, selector: string, attr: string): string {
-  const el = node?.querySelector(selector);
-  return el?.getAttribute(attr) || "";
-}
-
 export async function parseEpub(data: Uint8Array): Promise<EpubResult> {
   const warnings: string[] = [];
   const resources = new Map<string, Uint8Array>();
@@ -69,7 +65,7 @@ export async function parseEpub(data: Uint8Array): Promise<EpubResult> {
   const opfBase = opfPath.substring(0, opfPath.lastIndexOf("/") + 1);
 
   const metadata = parseMetadata(opfDoc);
-  const { manifest: manifestMap, spine } = parseManifestAndSpine(opfDoc, opfBase);
+  const { manifest: manifestMap, spine, coverId: manifestCoverId } = parseManifestAndSpine(opfDoc, opfBase);
 
   for (const [id, item] of manifestMap) {
     const fullPath = opfBase + item.href;
@@ -106,18 +102,30 @@ export async function parseEpub(data: Uint8Array): Promise<EpubResult> {
     }
   }
 
-  if (metadata.coverImage) {
-    const coverId = Array.from(manifest.entries()).find(([, v]) => v.href === metadata.coverImage?.mimeType)?.[0];
-    if (coverId && resources.has(coverId)) {
-      metadata.coverImage = { data: resources.get(coverId)!, mimeType: manifest.get(coverId)?.mimeType || "image/jpeg" };
-    }
-  }
+  const cover = resolveCover(metadata.coverId ?? manifestCoverId, manifest, resources);
+  if (cover) metadata.coverImage = cover;
 
   return { metadata, chapters, spine, manifest, resources, warnings };
 }
 
+export interface CoverImage {
+  data: Uint8Array;
+  mimeType: string;
+}
+
+export function resolveCover(
+  coverId: string | undefined,
+  manifest: Map<string, { href: string; mimeType: string }>,
+  resources: Map<string, Uint8Array>,
+): CoverImage | undefined {
+  if (!coverId) return undefined;
+  const coverData = resources.get(coverId);
+  const coverItem = manifest.get(coverId);
+  if (!coverData || !coverItem) return undefined;
+  return { data: coverData, mimeType: coverItem.mimeType || "image/jpeg" };
+}
+
 function parseMetadata(doc: Document): EpubMetadata {
-  const ns = { opf: "http://www.idpf.org/2007/opf", dc: "http://purl.org/dc/elements/1.1/" };
   const meta = doc.querySelector("metadata");
   return {
     title: getText(meta, "dc\\:title, title"),
@@ -127,12 +135,14 @@ function parseMetadata(doc: Document): EpubMetadata {
     publisher: getText(meta, "dc\\:publisher, publisher"),
     date: getText(meta, "dc\\:date, date"),
     description: getText(meta, "dc\\:description, description"),
+    coverId: meta?.querySelector('meta[name="cover"]')?.getAttribute("content") ?? undefined,
   };
 }
 
-function parseManifestAndSpine(doc: Document, base: string) {
+function parseManifestAndSpine(doc: Document, _base: string) {
   const manifest = new Map<string, { href: string; mimeType: string }>();
   const spine: string[] = [];
+  let coverId: string | undefined;
 
   const manifestEl = doc.querySelector("manifest");
   manifestEl?.querySelectorAll("item").forEach(item => {
@@ -140,6 +150,7 @@ function parseManifestAndSpine(doc: Document, base: string) {
     const href = item.getAttribute("href")!;
     const mimeType = item.getAttribute("media-type") || "";
     manifest.set(id, { href, mimeType });
+    if (item.getAttribute("properties")?.split(/\s+/).includes("cover-image")) coverId = id;
   });
 
   const spineEl = doc.querySelector("spine");
@@ -148,7 +159,7 @@ function parseManifestAndSpine(doc: Document, base: string) {
     spine.push(idref);
   });
 
-  return { manifest, spine };
+  return { manifest, spine, coverId };
 }
 
 function extractTitle(doc: Document, href: string): string {
@@ -310,7 +321,7 @@ function exportMarkdown(result: EpubResult, chapters: string[], includeMetadata:
     md += `> **Warning:** ${brokenCount} chapter${brokenCount !== 1 ? "s" : ""} could not be parsed and were skipped.\n\n`;
   }
 
-  const chapterMd = chapters.map((c, i) => {
+  const chapterMd = chapters.map((c, _i) => {
     const doc = new DOMParser().parseFromString(c, "text/html");
     return htmlToMarkdown(doc.body);
   });
