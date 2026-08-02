@@ -26,7 +26,7 @@ const RULES = {
 export function lintMarkdown(markdown: string, fix = false): LintResult {
   const lines = markdown.split("\n");
   const issues: LintIssue[] = [];
-  const fixedLines = [...lines];
+  let fixedLines = [...lines];
   let lastHeadingLevel = 0;
   const headingTexts = new Set<string>();
 
@@ -135,7 +135,7 @@ export function lintMarkdown(markdown: string, fix = false): LintResult {
     const fixableIssues = issues.filter((i) => i.fixable && i.fix);
     for (const issue of fixableIssues) {
       if (issue.fix) {
-        issue.fix(fixedLines);
+        fixedLines = issue.fix(fixedLines);
       }
     }
     fixed = fixedLines.join("\n");

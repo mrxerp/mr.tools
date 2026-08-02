@@ -53,7 +53,7 @@ function stringifyYAML(fm: FrontMatter): string {
   for (const [key, value] of Object.entries(fm)) {
     if (value === undefined || value === null) continue;
     if (Array.isArray(value)) {
-      lines.push(`${key}: [${value.map((v) => (typeof v === "string" && v.includes(" ")) ? `"${v}"` : v).join(", ")}]`);
+      lines.push(`${key}: [${value.map((v) => (typeof v === "string" ? `"${v}"` : v)).join(", ")}]`);
     } else if (typeof value === "boolean") {
       lines.push(`${key}: ${value}`);
     } else if (typeof value === "string" && value.includes(" ")) {
@@ -75,9 +75,12 @@ function slugify(text: string): string {
 }
 
 function fixDate(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const parsed = new Date(value);
-  if (!isNaN(parsed.getTime())) return parsed.toISOString().split("T")[0];
-  return value;
+  if (isNaN(parsed.getTime())) return value;
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${parsed.getFullYear()}-${month}-${day}`;
 }
 
 export function fixFrontMatter(content: string): FixResult {

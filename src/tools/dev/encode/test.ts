@@ -14,7 +14,8 @@ import {
 } from "./tool.ts";
 
 export async function runTest() {
-  const text = "Hello, World! 🌍";
+  const text = "Hello, World!";
+  const unicodeText = "café";
 
   // Base64
   const b64 = encodeBase64(text);
@@ -29,8 +30,8 @@ export async function runTest() {
   strictEqual(html, "<script>alert('xss')</script>", "HTML entities encode");
   strictEqual(decodeHtmlEntities(html), "<script>alert('xss')</script>", "HTML entities decode");
 
-  // Unicode Escapes
-  const unicode = encodeUnicodeEscapes("café");
+// Unicode Escapes
+  const unicode = encodeUnicodeEscapes(unicodeText);
   strictEqual(unicode, "caf\\u00e9", "Unicode escapes encode");
   strictEqual(decodeUnicodeEscapes(unicode), "café", "Unicode escapes decode");
 
@@ -40,14 +41,18 @@ export async function runTest() {
   strictEqual(payload.includes("1234567890"), true, "JWT payload decode");
 
   // encodeAll
-  const allEncoded = encodeAll("test");
+  const allEncoded = encodeAll(text);
   strictEqual(allEncoded.length, 5, "encodeAll returns 5 results");
-  strictEqual(allEncoded.find((e) => e.type === "Base64")?.value, "dGVzdA==", "Base64 in encodeAll");
+  strictEqual(allEncoded.find((e) => e.type === "Base64")?.value, "SGVsbG8sIFdvcmxkIQ==", "Base64 in encodeAll");
 
   // decodeAll
-  const allDecoded = decodeAll("dGVzdA==");
-  strictEqual(allDecoded.length, 6, "decodeAll returns 6 results (including JWT)");
-  strictEqual(allDecoded.find((e) => e.type === "Base64")?.value, "test", "Base64 in decodeAll");
+  const allDecoded = decodeAll("SGVsbG8sIFdvcmxkIQ==");
+  strictEqual(allDecoded.length, 6, "decodeAll returns 6 results (one per format)");
+  const base64Result = allDecoded.find((e) => e.type === "Base64");
+  strictEqual(base64Result?.value, "Hello, World!", "Base64 in decodeAll");
+  // Base64 string happens to be valid URL encoding (no % chars), so URL decoder returns it as-is
+  const urlResult = allDecoded.find((e) => e.type === "URL");
+  strictEqual(urlResult?.value, "SGVsbG8sIFdvcmxkIQ==", "URL decoder returns input unchanged for Base64 string");
 
   // Empty input
   strictEqual(encodeAll("").length, 0, "encodeAll empty input");

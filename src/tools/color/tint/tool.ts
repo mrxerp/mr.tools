@@ -75,25 +75,30 @@ function rgbToOklch(r: number, g: number, b: number): { l: number; c: number; h:
 }
 
 function oklchToRgb(l: number, c: number, h: number): { r: number; g: number; b: number } {
+  // OKLCH to sRGB conversion
+  // 1. OKLCH to OKLAB
+  const lNorm = l / 100;
+  const cNorm = c / 150;
   const hRad = (h * Math.PI) / 180;
-  const a = c * Math.cos(hRad);
-  const b = c * Math.sin(hRad);
-  const l0 = l + 0.3965 * a + 0.2158 * b;
-  const m0 = l - 0.1077 * a - 0.6687 * b;
-  const s0 = l - 0.8973 * a + 0.4112 * b;
-  const l1 = 0.2104 * l0 + 0.5362 * m0 - 0.0140 * s0;
-  const m1 = 0.7876 * l0 - 0.9567 * m0 + 0.1176 * s0;
-  const s1 = -0.2042 * l0 - 0.3676 * m0 + 1.6614 * s0;
-  let r = 1.2270 * l1 - 1.6026 * m1 + 0.0456 * s1;
-  let g = -0.0052 * l1 - 1.0424 * m1 + 1.0476 * s1;
-  let b2 = 0.1700 * l1 + 1.4056 * m1 - 0.1177 * s1;
-  r = Math.pow(Math.max(0, r), 2.4);
-  g = Math.pow(Math.max(0, g), 2.4);
-  b2 = Math.pow(Math.max(0, b2), 2.4);
+  const a = cNorm * Math.cos(hRad);
+  const b_oklab = cNorm * Math.sin(hRad);
+
+  // 2. OKLAB to linear RGB (using standard OKLAB to linear RGB matrix)
+  const l_ = lNorm + 0.3963377774 * a + 0.2158037573 * b_oklab;
+  const m_ = lNorm - 0.1055613458 * a - 0.0638541728 * b_oklab;
+  const s_ = lNorm - 0.0894841775 * a - 1.2914855480 * b_oklab;
+
+  // 3. Linear RGB to sRGB (with gamut clipping)
+  let r = 4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_;
+  let g = -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_;
+  let b_lin = -0.0041960863 * l_ - 0.7034186147 * m_ + 1.7076147010 * s_;
+
+  // Apply sRGB gamma correction
+  const toSrgb = (x: number) => x <= 0.0031308 ? x * 12.92 : 1.055 * Math.pow(Math.max(0, x), 1/2.4) - 0.055;
   return {
-    r: Math.max(0, Math.min(1, r)) * 255,
-    g: Math.max(0, Math.min(1, g)) * 255,
-    b: Math.max(0, Math.min(1, b2)) * 255,
+    r: Math.max(0, Math.min(1, toSrgb(r))) * 255,
+    g: Math.max(0, Math.min(1, toSrgb(g))) * 255,
+    b: Math.max(0, Math.min(1, toSrgb(b_lin))) * 255,
   };
 }
 
@@ -111,12 +116,27 @@ function generateScale(
   const scaleLevels = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950];
   const result: Record<string, string> = {};
 
-  const targetLightness = scaleLevels.map(level => {
-    const t = (level - 50) / 900;
-    return lightnessRange[0] + (lightnessRange[1] - lightnessRange[0]) * t;
+  // Find the index of level 500 (should be at index 5)
+  const baseIndex = scaleLevels.indexOf(500);
+
+  // Compute target lightness values that ensure base color is at level 500
+  // We interpolate from lightnessRange[0] to baseL, then from baseL to lightnessRange[1]
+  const targetLightness = scaleLevels.map((level, i) => {
+    if (i <= baseIndex) {
+      // Interpolate from lightnessRange[0] to baseL
+      const t = i / baseIndex;
+      return lightnessRange[0] + (baseL - lightnessRange[0]) * t;
+    } else {
+      // Interpolate from baseL to lightnessRange[1]
+      const t = (i - baseIndex) / (scaleLevels.length - 1 - baseIndex);
+      return baseL + (lightnessRange[1] - baseL) * t;
+    }
   });
 
   const targetChroma = scaleLevels.map((level, i) => {
+    if (i === baseIndex) {
+      return baseC; // Exact base chroma at level 500
+    }
     const targetL = targetLightness[i];
     if (targetL > 95) return Math.max(0, baseC * 0.1 * chromaMultiplier);
     if (targetL > 80) return Math.max(0, baseC * 0.3 * chromaMultiplier);
@@ -137,7 +157,10 @@ function generateScale(
 export function generateColorScale(baseColor: string, options: Partial<ScaleOptions> = {}): ColorScale {
   const { r, g, b } = hexToRgb(baseColor);
   const oklch = rgbToOklch(r, g, b);
-  return generateScale(oklch.l, oklch.c, oklch.h, options);
+  const scale = generateScale(oklch.l, oklch.c, oklch.h, options);
+  // Ensure the base color is exactly at level 500
+  scale[500] = baseColor.toLowerCase().startsWith('#') ? baseColor.toLowerCase() : '#' + baseColor.toLowerCase();
+  return scale;
 }
 
 export function generateScaleFromHue(

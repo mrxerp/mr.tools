@@ -57,9 +57,10 @@ export function parseYaml(input: string): YamlResult {
 
 function parseYamlInternal(input: string): unknown {
   const lines = input.split("\n");
-  const stack: Array<{ indent: number; value: unknown; key?: string }> = [];
-  let root: unknown = null;
-  let currentParent: Record<string, unknown> | unknown[] | null = null;
+  // Each entry records where a value lives (owner[key]) and the value itself,
+  // so object children fill the container while sequence children replace it.
+  const stack: Array<{ indent: number; owner: Record<string, unknown> | unknown[]; key: string | number; value: unknown; container: boolean }> = [];
+  let root: Record<string, unknown> | unknown[] | null = null;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -68,65 +69,74 @@ function parseYamlInternal(input: string): unknown {
     if (!trimmed || trimmed.startsWith("#")) continue;
 
     const indent = line.length - line.trimStart().length;
-    const [key, ...rest] = trimmed.split(":");
-    const value = rest.join(":").trim();
+    const isSequenceItem = trimmed.startsWith("- ");
 
     while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
       stack.pop();
     }
 
-    if (value === "" || value === "{}") {
-      const newObj: Record<string, unknown> = {};
-      if (stack.length === 0) {
-        root = newObj;
-        currentParent = newObj;
-      } else {
-        const parent = stack[stack.length - 1];
-        if (Array.isArray(parent.value)) {
-          (parent.value as unknown[]).push(newObj);
-        } else if (parent.key !== undefined) {
-          (parent.value as Record<string, unknown>)[parent.key] = newObj;
-        }
-      }
-      stack.push({ indent, value: newObj });
-    } else if (value.startsWith("- ")) {
-      const itemValue = parseYamlValue(value.slice(2).trim());
+    if (stack.length > 0 && indent > stack[stack.length - 1].indent && !stack[stack.length - 1].container) {
+      throw Object.assign(new Error("Bad indentation: children cannot nest under a scalar value"), {
+        mark: { line: i + 1, column: indent + 1 },
+      });
+    }
+
+    if (isSequenceItem) {
+      const itemText = trimmed.slice(2).trim();
+      const itemValue = parseYamlValue(itemText);
       if (stack.length === 0) {
         const newArr = [itemValue];
         root = newArr;
-        currentParent = newArr;
-        stack.push({ indent, value: newArr });
+        stack.push({ indent, owner: newArr, key: 0, value: newArr, container: true });
       } else {
-        const parent = stack[stack.length - 1];
-        if (!Array.isArray(parent.value)) {
-          const newArr: unknown[] = [];
-          if (parent.key !== undefined) {
-            (parent.value as Record<string, unknown>)[parent.key] = newArr;
-          } else if (stack.length === 1) {
-            root = newArr;
+        const top = stack[stack.length - 1];
+        let arr: unknown[];
+        if (Array.isArray(top.value)) {
+          arr = top.value;
+        } else {
+          arr = [];
+          if (Array.isArray(top.owner)) {
+            top.owner[top.key as number] = arr;
+          } else {
+            top.owner[top.key as string] = arr;
           }
-          parent.value = newArr;
+          stack[stack.length - 1] = { ...top, value: arr, container: true };
         }
-        (parent.value as unknown[]).push(itemValue);
-        if (isComplexValue(value.slice(2).trim())) {
-          stack.push({ indent: indent + 1, value: itemValue });
+        arr.push(itemValue);
+        if (isComplexValue(itemText)) {
+          const idx = arr.length - 1;
+          arr[idx] = {};
+          stack.push({ indent: indent + 1, owner: arr, key: idx, value: arr[idx], container: true });
         }
       }
     } else {
-      const parsedValue = parseYamlValue(value);
+      const [key, ...rest] = trimmed.split(":");
+      const value = rest.join(":").trim();
+      const keyName = key.trim();
+      const isComplex = isComplexValue(value);
+      const parsedValue = isComplex ? {} : parseYamlValue(value);
+
+      let owner: Record<string, unknown> | unknown[];
       if (stack.length === 0) {
-        const newObj = { [key.trim()]: parsedValue };
-        root = newObj;
-        currentParent = newObj;
-        stack.push({ indent, value: newObj, key: key.trim() });
-      } else {
-        const parent = stack[stack.length - 1];
-        if (Array.isArray(parent.value)) {
-          (parent.value as unknown[]).push({ [key.trim()]: parsedValue });
+        if (root && !Array.isArray(root)) {
+          owner = root;
         } else {
-          (parent.value as Record<string, unknown>)[key.trim()] = parsedValue;
+          const newObj = { [keyName]: parsedValue };
+          root = newObj;
+          owner = newObj;
+        }
+      } else {
+        const top = stack[stack.length - 1];
+        if (Array.isArray(top.value)) {
+          const item = { [keyName]: parsedValue };
+          top.value.push(item);
+          owner = item;
+        } else {
+          owner = top.value as Record<string, unknown>;
         }
       }
+      owner[keyName] = parsedValue;
+      stack.push({ indent, owner, key: keyName, value: parsedValue, container: isComplex });
     }
   }
 
@@ -134,6 +144,14 @@ function parseYamlInternal(input: string): unknown {
 }
 
 function parseYamlValue(value: string): unknown {
+  if (/[[\]{}]/.test(value)) {
+    let depth = 0;
+    for (const ch of value) {
+      if (ch === "[" || ch === "{") depth++;
+      else if (ch === "]" || ch === "}") depth--;
+    }
+    if (depth !== 0) throw new Error("Unbalanced brackets in value");
+  }
   if (value === "true" || value === "True" || value === "TRUE") return true;
   if (value === "false" || value === "False" || value === "FALSE") return false;
   if (value === "null" || value === "Null" || value === "NULL" || value === "~") return null;
@@ -202,7 +220,7 @@ function needsQuoting(str: string): boolean {
   if (/^["'`@&*!|>%{}[\]?,:]$/.test(str)) return true;
   if (/[\n\r\t]/.test(str)) return true;
   if (/^[-?~]/.test(str)) return true;
-  if (/[:#{}[]&*!|>'"`%@]/.test(str)) return true;
+  if (/[:#{}[\]&*!|>'"`%@]/.test(str)) return true;
   if (/^\d+$/.test(str)) return true;
   if (/^(true|false|null|~|\+|\-|\.|\d+\.\d+)$/i.test(str)) return true;
   return false;
@@ -234,7 +252,7 @@ export function convertYamlToJson(yamlInput: string, options: ConvertOptions = {
   return { ...parsed, json: JSON.stringify(parsed.data, null, indent) };
 }
 
-function checkYamlQuoting(input: string): string[] {
+export function checkYamlQuoting(input: string): string[] {
   const warnings: string[] = [];
   const lines = input.split("\n");
   for (let i = 0; i < lines.length; i++) {

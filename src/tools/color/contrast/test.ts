@@ -1,10 +1,10 @@
-import { strictEqual } from "node:assert";
+import { strictEqual, deepStrictEqual } from "node:assert";
 import { contrastRatio, checkContrast, suggestFixes, hexToRgb, rgbToHex } from "./tool.ts";
 
 export async function runTest() {
   strictEqual(contrastRatio("#000000", "#ffffff"), 21);
   strictEqual(contrastRatio("#ffffff", "#000000"), 21);
-  strictEqual(Math.round(contrastRatio("#1b1a17", "#fafaf8") * 100) / 100, 15.9);
+  strictEqual(Math.round(contrastRatio("#1b1a17", "#fafaf8") * 100) / 100, 16.65);
 
   const check = checkContrast("#1b1a17", "#fafaf8");
   strictEqual(check.aaNormal, true);
@@ -19,8 +19,8 @@ export async function runTest() {
   strictEqual(fixes.length, 4);
   strictEqual(fixes[0].meets.includes("AA Normal"), true);
 
-  strictEqual(hexToRgb("#ff0000"), { r: 255, g: 0, b: 0 });
-  strictEqual(hexToRgb("#f00"), { r: 255, g: 0, b: 0 });
+  deepStrictEqual(hexToRgb("#ff0000"), { r: 255, g: 0, b: 0 });
+  deepStrictEqual(hexToRgb("#f00"), { r: 255, g: 0, b: 0 });
   strictEqual(rgbToHex(255, 0, 0), "#ff0000");
   strictEqual(rgbToHex(300, -10, 128), "#ff0080");
 }

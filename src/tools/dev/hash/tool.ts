@@ -1,10 +1,12 @@
+const subtle = globalThis.crypto?.subtle ?? (await import("crypto")).subtle;
+
 export interface HashResult {
   algorithm: string;
   hash: string;
 }
 
 export interface HashOptions {
-  algorithm: "MD5" | "SHA-1" | "SHA-256" | "SHA-384" | "SHA-512";
+  algorithm: "SHA-256" | "SHA-384" | "SHA-512";
   hmacKey?: string;
 }
 
@@ -25,20 +27,24 @@ async function hashBuffer(
   if (options.hmacKey) {
     const encoder = new TextEncoder();
     const keyData = encoder.encode(options.hmacKey);
-    key = await crypto.subtle.importKey(
+    key = await subtle.importKey(
       "raw",
       keyData,
-      { name: "HMAC", hash: options.algorithm.replace("SHA-", "SHA-") },
+      { name: "HMAC", hash: options.algorithm },
       false,
       ["sign"],
     );
   }
 
-  const algorithm = key
-    ? { name: "HMAC", hash: options.algorithm }
-    : options.algorithm;
+  console.log('[dev/hash] algorithm:', key ? 'HMAC' : options.algorithm);
+if (key) {
+    const sigBuffer = await subtle.sign("HMAC", key, buffer);
+    return Array.from(new Uint8Array(sigBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
 
-  const hashBuffer = await crypto.subtle.digest(algorithm, buffer);
+  const hashBuffer = await subtle.digest(options.algorithm, buffer);
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -47,8 +53,6 @@ async function hashBuffer(
 export async function computeHashes(
   input: string,
   algorithms: HashOptions["algorithm"][] = [
-    "MD5",
-    "SHA-1",
     "SHA-256",
     "SHA-384",
     "SHA-512",
@@ -66,8 +70,6 @@ export async function computeHashes(
 export async function computeFileHashes(
   file: File,
   algorithms: HashOptions["algorithm"][] = [
-    "MD5",
-    "SHA-1",
     "SHA-256",
     "SHA-384",
     "SHA-512",
@@ -89,7 +91,7 @@ export async function computeFileHashes(
     if (hmacKey) {
       const encoder = new TextEncoder();
       const keyData = encoder.encode(hmacKey);
-      key = await crypto.subtle.importKey(
+      key = await subtle.importKey(
         "raw",
         keyData,
         { name: "HMAC", hash: algo.replace("SHA-", "SHA-") },

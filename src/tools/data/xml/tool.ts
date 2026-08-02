@@ -31,7 +31,7 @@ let XMLSerializerImpl: any;
 let XSLTProcessorImpl: any;
 let initialized = false;
 
-function initDOM() {
+async function initDOM() {
   if (initialized) return;
   initialized = true;
 
@@ -43,48 +43,50 @@ function initDOM() {
   }
 
   try {
-    const { createRequire } = require("module");
+    const { createRequire } = await import("module");
     const require = createRequire(import.meta.url);
     const xmldom = require("xmldom");
+    console.log('[xml] xmldom loaded:', Object.keys(xmldom));
     DOMParserImpl = xmldom.DOMParser;
     XMLSerializerImpl = xmldom.XMLSerializer;
     XSLTProcessorImpl = xmldom.XSLTProcessor;
-  } catch {
-    // xmldom not available
+    console.log('[xml] DOMParserImpl:', typeof DOMParserImpl);
+  } catch (e) {
+    console.error('[xml] xmldom load failed:', e.message);
   }
 }
 
-function getParser() {
-  initDOM();
+async function getParser() {
+  await initDOM();
   if (!DOMParserImpl) throw new Error("No XML parser available");
   return DOMParserImpl;
 }
 
-function getSerializer() {
-  initDOM();
+async function getSerializer() {
+  await initDOM();
   if (!XMLSerializerImpl) throw new Error("No XML serializer available");
   return XMLSerializerImpl;
 }
 
-function getXSLTProcessor() {
-  initDOM();
+async function getXSLTProcessor() {
+  await initDOM();
   if (!XSLTProcessorImpl) throw new Error("No XSLT processor available");
   return XSLTProcessorImpl;
 }
 
-export function parseXml(input: string): XmlResult {
+export async function parseXml(input: string): Promise<XmlResult> {
   if (!input.trim()) {
     return { valid: true, formatted: "", tree: { name: "", attributes: {}, children: [] } };
   }
 
   try {
-    const parser = new (getParser())();
+    const parser = new (await getParser())();
     const doc = parser.parseFromString(input, "application/xml");
-    const parseError = doc.querySelector("parsererror");
-    if (parseError) {
-      throw new Error(parseError.textContent || "XML parse error");
+    const parseErrors = doc.getElementsByTagName("parsererror");
+    if (parseErrors.length > 0) {
+      throw new Error(parseErrors[0].textContent || "XML parse error");
     }
-    const formatted = formatXml(doc);
+    const formatted = await formatXml(doc);
     const tree = xmlToTree(doc.documentElement);
     return { valid: true, formatted, tree };
   } catch (e) {
@@ -93,8 +95,8 @@ export function parseXml(input: string): XmlResult {
   }
 }
 
-function formatXml(doc: any): string {
-  const serializer = new (getSerializer())();
+async function formatXml(doc: any): Promise<string> {
+  const serializer = new (await getSerializer())();
   let xml = serializer.serializeToString(doc);
   return prettyPrintXml(xml);
 }
@@ -123,30 +125,34 @@ function xmlToTree(element: any): XmlNode {
     children: [],
   };
 
-  for (const attr of element.attributes) {
+  for (let i = 0; i < element.attributes.length; i++) {
+    const attr = element.attributes[i];
     node.attributes[attr.name] = attr.value;
   }
 
-  for (const child of element.children) {
-    node.children.push(xmlToTree(child));
-  }
-
-  if (element.textContent && element.textContent.trim() && element.children.length === 0) {
-    node.text = element.textContent.trim();
+  for (let i = 0; i < element.childNodes.length; i++) {
+    const child = element.childNodes[i];
+    if (child.nodeType === 1) { // Element node
+      node.children.push(xmlToTree(child));
+    } else if (child.nodeType === 3) { // Text node
+      if (child.textContent && child.textContent.trim()) {
+        node.text = child.textContent.trim();
+      }
+    }
   }
 
   return node;
 }
 
-export function validateXsd(xmlInput: string, xsdInput: string): XsdResult {
+export async function validateXsd(xmlInput: string, xsdInput: string): Promise<XsdResult> {
   try {
-    const parser = new (getParser())();
+    const parser = new (await getParser())();
     const xmlDoc = parser.parseFromString(xmlInput, "application/xml");
     const xsdDoc = parser.parseFromString(xsdInput, "application/xml");
 
-    const xsdError = xsdDoc.querySelector("parsererror");
-    if (xsdError) {
-      return { valid: false, errors: ["Invalid XSD: " + xsdError.textContent] };
+    const xsdError = xsdDoc.getElementsByTagName("parsererror");
+    if (xsdError.length > 0) {
+      return { valid: false, errors: ["Invalid XSD: " + xsdError[0].textContent] };
     }
 
     return { valid: true, errors: [] };
@@ -155,35 +161,35 @@ export function validateXsd(xmlInput: string, xsdInput: string): XsdResult {
   }
 }
 
-export function transformXslt(xmlInput: string, xsltInput: string): XsltResult {
+export async function transformXslt(xmlInput: string, xsltInput: string): Promise<XsltResult> {
   try {
-    const parser = new (getParser())();
+    const parser = new (await getParser())();
     const xmlDoc = parser.parseFromString(xmlInput, "application/xml");
     const xsltDoc = parser.parseFromString(xsltInput, "application/xml");
 
-    const xmlError = xmlDoc.querySelector("parsererror");
-    if (xmlError) throw new Error("Invalid XML: " + xmlError.textContent);
+    const xmlError = xmlDoc.getElementsByTagName("parsererror");
+    if (xmlError.length > 0) throw new Error("Invalid XML: " + xmlError[0].textContent);
 
-    const xsltError = xsltDoc.querySelector("parsererror");
-    if (xsltError) throw new Error("Invalid XSLT: " + xsltError.textContent);
+    const xsltError = xsltDoc.getElementsByTagName("parsererror");
+    if (xsltError.length > 0) throw new Error("Invalid XSLT: " + xsltError[0].textContent);
 
-    const processor = new (getXSLTProcessor())();
+    const processor = new (await getXSLTProcessor())();
     processor.importStylesheet(xsltDoc);
 
     const resultDoc = processor.transformToDocument(xmlDoc);
     if (!resultDoc) {
       const resultFragment = processor.transformToFragment(xmlDoc, document);
-      const serializer = new (getSerializer())();
+      const serializer = new (await getSerializer())();
       return { output: serializer.serializeToString(resultFragment) };
     }
 
-    const serializer = new (getSerializer())();
+    const serializer = new (await getSerializer())();
     return { output: serializer.serializeToString(resultDoc) };
   } catch (e) {
     return { output: "", error: (e as Error).message };
   }
 }
 
-export function formatXmlString(input: string): XmlResult {
+export async function formatXmlString(input: string): Promise<XmlResult> {
   return parseXml(input);
 }

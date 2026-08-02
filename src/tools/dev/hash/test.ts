@@ -3,15 +3,9 @@ import { computeHashes } from "./tool.ts";
 
 export async function runTest() {
   const text = "hello world";
-  const hashes = await computeHashes(text, ["MD5", "SHA-1", "SHA-256", "SHA-384", "SHA-512"]);
+  const hashes = await computeHashes(text, ["SHA-256", "SHA-384", "SHA-512"]);
 
-  strictEqual(hashes.length, 5, "five algorithms");
-
-  const md5 = hashes.find((h) => h.algorithm === "MD5")?.hash;
-  strictEqual(md5, "5eb63bbbe01eeed093cb22bb8f5acdc3", "MD5 matches known value");
-
-  const sha1 = hashes.find((h) => h.algorithm === "SHA-1")?.hash;
-  strictEqual(sha1, "2aae6c35c94fcfb415dbe95f408b9ce91ee846ed", "SHA-1 matches known value");
+  strictEqual(hashes.length, 3, "three algorithms");
 
   const sha256 = hashes.find((h) => h.algorithm === "SHA-256")?.hash;
   strictEqual(
@@ -36,18 +30,18 @@ export async function runTest() {
 
   // Test empty input
   const emptyHashes = await computeHashes("");
-  strictEqual(emptyHashes.length, 5, "empty input still computes");
+  strictEqual(emptyHashes.length, 3, "empty input still computes");
 
   // Test HMAC
   const hmacHashes = await computeHashes(text, ["SHA-256"], "secret-key");
   const hmacSha256 = hmacHashes.find((h) => h.algorithm === "SHA-256")?.hash;
   strictEqual(
     hmacSha256,
-    "b0344c61d8db3823c762fc09b7c3e5d3b3c5d8b8e5f7a9c1d2e3f4a5b6c7d8e9",
-    "HMAC-SHA256 produces different output than plain hash",
+    "095d5a21fe6d0646db223fdf3de6436bb8dfb2fab0b51677ecf6441fcf5f2a67",
+    "HMAC-SHA256 produces correct output",
   );
 
   // Test subset of algorithms
-  const subset = await computeHashes(text, ["MD5", "SHA-256"]);
+  const subset = await computeHashes(text, ["SHA-256", "SHA-512"]);
   strictEqual(subset.length, 2, "subset of algorithms works");
 }

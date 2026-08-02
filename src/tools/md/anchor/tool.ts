@@ -30,57 +30,28 @@ function slugify(text: string): string {
 function processMarkdown(markdown: string): AnchorResult {
   const lines = markdown.split("\n");
   const headings: Heading[] = [];
-  const headingMap = new Map<string, string>();
+  const headingMap = new Map<string, number>();
+  const out: string[] = [];
 
   for (const line of lines) {
     const match = line.match(/^(#{1,6})\s+(.+)$/);
-    if (match) {
-      const level = match[1].length;
-      const text = match[2];
-      const anchor = slugify(text);
-      const counter = headingMap.get(anchor) || 0;
-      const finalAnchor = counter === 0 ? anchor : `${anchor}-${counter}`;
-      headingMap.set(anchor, (counter + 1).toString());
-      headings.push({ level, text, anchor: finalAnchor });
+    if (!match) {
+      out.push(line);
+      continue;
     }
+    const level = match[1].length;
+    const text = match[2];
+    const base = slugify(text);
+    const count = headingMap.get(base) || 0;
+    headingMap.set(base, count + 1);
+    const anchor = count === 0 ? base : `${base}-${count}`;
+    headings.push({ level, text, anchor });
+    out.push(`${match[1]} <a id="${anchor}"></a> ${text}`);
   }
 
-  const toc: TOCEntry[] = [];
-  const stack: TOCEntry[] = [];
-  for (const heading of headings) {
-    const entry: TOCEntry = {
-      level: heading.level,
-      text: heading.text,
-      anchor: heading.anchor,
-    };
-    while (stack.length > 0 && stack[stack.length - 1].level >= heading.level) {
-      stack.pop();
-    }
-    if (stack.length === 0) {
-      toc.push(entry);
-    } else {
-      stack[stack.length - 1].children = stack[stack.length - 1].children || [];
-      stack[stack.length - 1].children.push(entry);
-    }
-    stack.push(entry);
-  }
+  const toc: TOCEntry[] = headings.map((h) => ({ level: h.level, text: h.text, anchor: h.anchor }));
 
-  const markdownWithAnchors = lines
-    .map((line) => {
-      const match = line.match(/^(#{1,6})\s+(.+)$/);
-      if (match) {
-        const level = match[1].length;
-        const text = match[2];
-        const anchor = slugify(text);
-        const counter = headingMap.get(anchor) || 0;
-        const finalAnchor = counter === 0 ? anchor : `${anchor}-${counter}`;
-        return `${match[1]} <a id="${finalAnchor}"></a> ${text}`;
-      }
-      return line;
-    })
-    .join("\n");
-
-  return { headings, toc, markdownWithAnchors };
+  return { headings, toc, markdownWithAnchors: out.join("\n") };
 }
 
 export { processMarkdown };

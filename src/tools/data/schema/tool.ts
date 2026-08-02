@@ -67,7 +67,7 @@ export function inferSingleSchema(value: unknown): JsonSchema {
   return schema;
 }
 
-function mergeSchemas(schemas: JsonSchema[]): JsonSchema {
+export function mergeSchemas(schemas: JsonSchema[]): JsonSchema {
   if (schemas.length === 1) return schemas[0];
 
   const types = new Set(schemas.map((s) => s.type).filter(Boolean));
@@ -99,6 +99,8 @@ function mergeSchemas(schemas: JsonSchema[]): JsonSchema {
     return { type: "array", items: items.length ? mergeSchemas(items) : {} };
   }
 
+  // For primitive types, merge formats and other properties
+  const formats = new Set(schemas.map((s) => s.format).filter(Boolean));
   const enums = new Set<unknown>();
   for (const s of schemas) {
     if (s.const !== undefined) enums.add(s.const);
@@ -108,7 +110,10 @@ function mergeSchemas(schemas: JsonSchema[]): JsonSchema {
     return { type: type as string, enum: Array.from(enums) };
   }
 
-  return { type: type as string };
+  const result: JsonSchema = { type: type as string };
+  if (formats.size === 1) result.format = formats.values().next().value;
+  else if (formats.size > 1) result.anyOf = schemas.map(s => ({ type: type as string, format: s.format })).filter(s => s.format);
+  return result;
 }
 
 export function isEmail(str: string): boolean {
@@ -135,7 +140,7 @@ export function validateSchema(data: unknown, schema: JsonSchema): SchemaResult 
   return { schema, valid: errors.length === 0, errors: errors.length ? errors : undefined };
 }
 
-function validateValue(
+export function validateValue(
   value: unknown,
   schema: JsonSchema,
   path: string,

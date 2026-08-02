@@ -16,7 +16,7 @@ export interface PathResult {
 }
 
 export function buildPathTree(data: unknown, maxDepth = 10): PathNode[] {
-  return visitNode(data, "$", "", 0, maxDepth);
+  return [visitNode(data, "$", "", 0, maxDepth)];
 }
 
 function visitNode(

@@ -79,6 +79,9 @@ function adjustLightness(hex: string, targetRatio: number, bg: string, isFg: boo
   const [br, bgR, bb] = parseHex(bg);
   const bgLum = luminance(br, bgR, bb);
 
+  // For light backgrounds, go darker (towards 0); for dark backgrounds, go lighter (towards 255)
+  const targetColor = bgLum > 0.5 ? 0 : 255;
+
   let low = 0;
   let high = 255;
   let best = hex;
@@ -86,9 +89,9 @@ function adjustLightness(hex: string, targetRatio: number, bg: string, isFg: boo
   for (let i = 0; i < 20; i++) {
     const mid = (low + high) / 2;
     const factor = mid / 255;
-    const nr = clamp(r * factor + (1 - factor) * (isFg ? 255 : 0));
-    const ng = clamp(g * factor + (1 - factor) * (isFg ? 255 : 0));
-    const nb = clamp(b * factor + (1 - factor) * (isFg ? 255 : 0));
+    const nr = clamp(r * factor + (1 - factor) * targetColor);
+    const ng = clamp(g * factor + (1 - factor) * targetColor);
+    const nb = clamp(b * factor + (1 - factor) * targetColor);
     const testHex = `#${nr.toString(16).padStart(2, "0")}${ng.toString(16).padStart(2, "0")}${nb.toString(16).padStart(2, "0")}`;
     const ratio = isFg ? contrastRatio(testHex, bg) : contrastRatio(bg, testHex);
     if (ratio >= targetRatio) {

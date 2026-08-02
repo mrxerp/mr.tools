@@ -22,6 +22,7 @@ export function parseMarkdownTable(md: string): TableData | null {
       .map((c) => c.trim());
 
   const headerCells = parseRow(lines[0]);
+  if (headerCells.length < 2) return null;
   const alignLine = lines[1];
   const alignments = parseRow(alignLine).map((cell) => {
     const left = cell.startsWith(":");

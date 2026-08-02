@@ -11,7 +11,7 @@ Very long line that exceeds the maximum allowed length of one hundred characters
 
 [empty link]()
 
-![missing alt](image.png)
+![](image.png)
 
 [valid link](https://example.com)
 

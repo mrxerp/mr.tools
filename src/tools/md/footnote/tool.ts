@@ -3,7 +3,7 @@ export interface FootnoteResult {
   warnings: string[];
 }
 
-const FOOTNOTE_REF_RE = /\[\^([^\]]+)\]/g;
+const FOOTNOTE_REF_RE = /\[\^([^\]]+)\](?!\s*:)/g;
 const FOOTNOTE_DEF_RE = /^\[\^([^\]]+)\]:\s*(.*)$/gm;
 
 export function renumberFootnotes(markdown: string): FootnoteResult {
@@ -46,6 +46,9 @@ export function renumberFootnotes(markdown: string): FootnoteResult {
   const orderedDefs = defOrder.filter((k) => usedRefs.has(k));
   for (let i = 0; i < orderedDefs.length; i++) {
     refs.set(orderedDefs[i], i + 1);
+  }
+  for (const key of defOrder) {
+    if (!usedRefs.has(key)) refs.set(key, refs.size + 1);
   }
 
   let result = markdown.replace(FOOTNOTE_REF_RE, (_, key) => {

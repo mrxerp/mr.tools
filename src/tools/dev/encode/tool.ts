@@ -31,9 +31,50 @@ export function encodeUriComponent(input: string): string {
 }
 
 export function decodeHtmlEntities(input: string): string {
-  const textarea = document.createElement("textarea");
-  textarea.innerHTML = input;
-  return textarea.value;
+  // Pure JS HTML entity decoder - no DOM dependency
+  const entityMap: Record<string, string> = {
+    "&": "&",
+    "<": "<",
+    ">": ">",
+    "&apos;": "'",
+    "&nbsp;": " ",
+    "&copy;": "©",
+    "&reg;": "®",
+    "&trade;": "™",
+    "&euro;": "€",
+    "&pound;": "£",
+    "&yen;": "¥",
+    "&cent;": "¢",
+    "&sect;": "§",
+    "&middot;": "·",
+    "&bull;": "•",
+    "&hellip;": "…",
+    "&mdash;": "—",
+    "&ndash;": "–",
+    "&lsquo;": "'",
+    "&rsquo;": "'",
+    "&ldquo;": "\"",
+    "&rdquo;": "\"",
+    "&laquo;": "«",
+    "&raquo;": "»",
+    "&times;": "×",
+    "&divide;": "÷",
+    "&frac14;": "¼",
+    "&frac12;": "½",
+    "&frac34;": "¾",
+  };
+
+  return input.replace(/&(?:#\d+|#x[\da-fA-F]+|[a-zA-Z]+);/g, (match) => {
+    // Numeric entities
+    if (match.startsWith("&#x") || match.startsWith("&#X")) {
+      return String.fromCharCode(parseInt(match.slice(3, -1), 16));
+    }
+    if (match.startsWith("&#")) {
+      return String.fromCharCode(parseInt(match.slice(2, -1), 10));
+    }
+    // Named entities
+    return entityMap[match] || match;
+  });
 }
 
 export function encodeHtmlEntities(input: string): string {

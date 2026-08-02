@@ -10,6 +10,7 @@ export interface TableResult {
   headers: string[];
   rows: unknown[][];
   warnings?: string[];
+  error?: string;
 }
 
 export interface ParseResult {
@@ -134,7 +135,7 @@ export function csvToJson(csvInput: string, options: TableOptions = {}): ParseRe
   return { data };
 }
 
-function parseCsvLine(line: string): string[] {
+export function parseCsvLine(line: string): string[] {
   const result: string[] = [];
   let current = "";
   let inQuotes = false;
@@ -158,7 +159,7 @@ function parseCsvLine(line: string): string[] {
   return result;
 }
 
-function unflattenObject(obj: Record<string, unknown>, separator: string): unknown {
+export function unflattenObject(obj: Record<string, unknown>, separator: string): unknown {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     const parts = key.split(separator);

@@ -218,6 +218,7 @@ const EMOJI_DATA: Record<string, string> = {
   "busts_in_silhouette": "👥",
   "footprints": "👣",
   "red_heart": "❤️",
+  "heart": "❤️",
   "orange_heart": "🧡",
   "yellow_heart": "💛",
   "green_heart": "💚",
