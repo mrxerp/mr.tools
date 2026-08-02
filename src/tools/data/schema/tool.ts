@@ -55,7 +55,7 @@ export function inferSingleSchema(value: unknown): JsonSchema {
   }
   const type = typeof value;
   const schema: JsonSchema = { type };
-  if (type === "string") {
+  if (typeof value === "string") {
     if (isEmail(value)) schema.format = "email";
     else if (isUuid(value)) schema.format = "uuid";
     else if (isDateTime(value)) schema.format = "date-time";

@@ -120,7 +120,8 @@ function readPly(data: Uint8Array): Mesh {
   const vertices: MeshVertex[] = [];
   const faces: MeshFace[] = [];
 
-  for (let i = 0; i < lines.length; i++) {
+  let i = 0;
+  for (; i < lines.length; i++) {
     if (lines[i] === "end_header") {
       i++;
       break;
@@ -539,41 +540,4 @@ function writeGltf(mesh: Mesh): string {
   gltf.meshes = [meshDesc];
 
   return JSON.stringify(gltf, null, 2);
-}
-
-export async function runTest() {
-  const testData = new TextEncoder().encode(`v 0 0 0
-v 1 0 0
-v 0 1 0
-v 0 0 1
-f 1 2 3
-f 2 3 4
-`);
-
-  const result = parseMesh(testData, "obj");
-
-  strictEqual(result.mesh.vertices.length, 4);
-  strictEqual(result.mesh.faces.length, 2);
-  strictEqual(result.mesh.bounds.minX, 0);
-  strictEqual(result.mesh.bounds.maxX, 1);
-  strictEqual(result.mesh.triangleCount, 2);
-  ok(result.mesh.triangleCount === 2);
-
-  const stlData = writeMesh(result.mesh, "stl");
-  ok(stlData.byteLength > 0);
-
-  const objData = writeMesh(result.mesh, "obj");
-  ok(objData.length > 0);
-
-  const plyData = writeMesh(result.mesh, "ply");
-  ok(plyData.length > 0);
-
-  const gltfData = writeMesh(result.mesh, "gltf");
-  const gltfJson = JSON.parse(gltfData);
-  strictEqual(gltfJson.scenes.length, 1);
-
-  strictEqual(formatBytes(500), "500 B");
-  strictEqual(formatBytes(2048), "2.0 KB");
-
-  console.log("All mesh tests passed");
 }

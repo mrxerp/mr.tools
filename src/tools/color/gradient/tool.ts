@@ -8,7 +8,7 @@ export interface GradientStop {
 export interface GradientConfig {
   type: GradientType;
   stops: GradientStop[];
-  angle: number;
+  angle?: number;
   shape?: "circle" | "ellipse";
   position?: string;
   size?: "closest-side" | "farthest-side" | "closest-corner" | "farthest-corner" | "cover" | "contain";
@@ -76,7 +76,7 @@ export function gradientToCanvas(
   const ctx = canvas.getContext("2d")!;
 
   if (config.type === "linear") {
-    const angle = (config.angle * Math.PI) / 180;
+    const angle = (config.angle! * Math.PI) / 180;
     const cos = Math.cos(angle);
     const sin = Math.sin(angle);
     const halfW = width / 2;
@@ -110,7 +110,7 @@ export function gradientToCanvas(
   } else if (config.type === "conic") {
     const cx = width / 2;
     const cy = height / 2;
-    const gradient = ctx.createConicGradient((config.angle * Math.PI) / 180, cx, cy);
+    const gradient = ctx.createConicGradient((config.angle! * Math.PI) / 180, cx, cy);
     [...config.stops].sort((a, b) => a.position - b.position).forEach(s => {
       gradient.addColorStop(s.position, s.color);
     });

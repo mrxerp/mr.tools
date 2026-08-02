@@ -126,7 +126,7 @@
       if (e.dataTransfer?.files.length) onFiles(e.dataTransfer.files);
     });
     input.addEventListener("change", () => {
-      if (input.files.length) onFiles(input.files);
+      if (input.files?.length) onFiles(input.files);
       input.value = "";
     });
   }
@@ -270,7 +270,7 @@
 
   createBtn.addEventListener("click", async () => {
     const files = createFileInput.files;
-    if (!files.length) return;
+    if (!files?.length) return;
     createBtn.disabled = true;
     createBtn.textContent = "Creating...";
     outBox.textContent = "";

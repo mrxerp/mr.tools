@@ -207,7 +207,7 @@ import { downloadText } from "@/lib/download";
       }, null, 2);
     }
     output.textContent = result;
-    copyTextWithFeedback(result, output);
+    copyTextWithFeedback(result, output as unknown as HTMLButtonElement);
   }
 
   function applyPreset(preset: "tailwind" | "warm" | "cool") {

@@ -141,7 +141,7 @@
     out.textContent = "Stitching…";
     try {
       const inputs = await Promise.all(files.map(async f => ({
-        data: f.name.toLowerCase().endsWith(".xlsx") ? await readFileAsArrayBuffer(f) : await readFileAsText(f),
+        data: f.name.toLowerCase().endsWith(".xlsx") ? new Uint8Array(await readFileAsArrayBuffer(f)) : await readFileAsText(f),
         isXlsx: f.name.toLowerCase().endsWith(".xlsx"),
         name: f.name,
       })));

@@ -434,10 +434,6 @@ function mixColors(color1: Color, color2: Color, ratio: number): Color {
 }
 
 export {
-  type ColorFormat,
-  type Color,
-  type Palette,
-  type HarmonyType,
   hexToRgb,
   rgbToHex,
   hexToHsl,

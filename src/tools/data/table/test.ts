@@ -50,8 +50,8 @@ export async function runTest() {
 
   // csvToJson with flatten
   const c2 = csvToJson("a.b,a.c\n1,2", { flatten: true });
-  strictEqual((c2.data[0] as Record<string, unknown>).a.b, 1);
-  strictEqual((c2.data[0] as Record<string, unknown>).a.c, 2);
+  strictEqual((c2.data[0] as { a: Record<string, unknown> }).a.b, 1);
+  strictEqual((c2.data[0] as { a: Record<string, unknown> }).a.c, 2);
 
   // parseCsvLine
   deepStrictEqual(parseCsvLine('a,b,c'), ["a", "b", "c"]);

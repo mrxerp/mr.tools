@@ -25,7 +25,7 @@
 </section>
 
 <script>
-  import { parseColor, generateHarmonies, formatBytes } from "./tool.ts";
+  import { parseColor, generateHarmonies } from "./tool.ts";
   import { copyTextWithFeedback } from "@/lib/clipboard";
 
   const input = document.querySelector<HTMLInputElement>("[data-input]")!;
@@ -40,7 +40,7 @@
   async function pickColor() {
     try {
       if (!("EyeDropper" in window)) throw new Error("EyeDropper API not supported");
-      const eyeDropper = new EyeDropper();
+      const eyeDropper = new (window as any).EyeDropper();
       const result = await eyeDropper.open();
       input.value = result.sRGBHex;
       analyze();
@@ -70,7 +70,7 @@
 
       html += `<hr style="margin:0.5rem 0"><strong>Harmonies:</strong><br>`;
       for (const h of harmonies) {
-        html += `${h.type}: ${h.colors.map(c => c.hex).join(", ")}<br>`;
+        html += `${h.name}: ${h.colors.map(c => c.hex).join(", ")}<br>`;
       }
 
       resultBox.style.display = "block";

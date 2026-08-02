@@ -1,12 +1,14 @@
 const subtle = globalThis.crypto?.subtle ?? (await import("crypto")).subtle;
 
+export type HashAlgorithm = "SHA-256" | "SHA-384" | "SHA-512";
+
 export interface HashResult {
   algorithm: string;
   hash: string;
 }
 
 export interface HashOptions {
-  algorithm: "SHA-256" | "SHA-384" | "SHA-512";
+  algorithm: HashAlgorithm;
   hmacKey?: string;
 }
 
@@ -16,7 +18,7 @@ async function hashText(
 ): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(text);
-  return hashBuffer(data, options);
+  return hashBuffer(data.buffer, options);
 }
 
 async function hashBuffer(
@@ -44,7 +46,10 @@ if (key) {
       .join("");
   }
 
-  const hashBuffer = await subtle.digest(options.algorithm, buffer);
+  const hashBuffer = await subtle.digest(
+    options.algorithm,
+    buffer,
+  );
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -52,11 +57,7 @@ if (key) {
 
 export async function computeHashes(
   input: string,
-  algorithms: HashOptions["algorithm"][] = [
-    "SHA-256",
-    "SHA-384",
-    "SHA-512",
-  ],
+  algorithms: HashAlgorithm[] = ["SHA-256", "SHA-384", "SHA-512"],
   hmacKey?: string,
 ): Promise<HashResult[]> {
   return Promise.all(
@@ -69,11 +70,7 @@ export async function computeHashes(
 
 export async function computeFileHashes(
   file: File,
-  algorithms: HashOptions["algorithm"][] = [
-    "SHA-256",
-    "SHA-384",
-    "SHA-512",
-  ],
+  algorithms: HashAlgorithm[] = ["SHA-256", "SHA-384", "SHA-512"],
   hmacKey?: string,
   onProgress?: (progress: number) => void,
 ): Promise<HashResult[]> {
@@ -83,7 +80,7 @@ export async function computeFileHashes(
 
   const hashStates = new Map<
     string,
-    { algorithm: HashOptions["algorithm"]; hash: CryptoKey | null }
+    { algorithm: HashAlgorithm; hash: CryptoKey | null }
   >();
 
   for (const algo of algorithms) {
@@ -136,13 +133,7 @@ export async function computeFileHashes(
 
 export async function computeFileHashesIncremental(
   file: File,
-  algorithms: HashOptions["algorithm"][] = [
-    "MD5",
-    "SHA-1",
-    "SHA-256",
-    "SHA-384",
-    "SHA-512",
-  ],
+  algorithms: HashAlgorithm[] = ["SHA-256", "SHA-384", "SHA-512"],
   hmacKey?: string,
   onProgress?: (progress: number) => void,
 ): Promise<HashResult[]> {

@@ -63,9 +63,9 @@
   const validateXsdBtn = document.querySelector<HTMLButtonElement>("[data-validate-xsd]")!;
   const transformBtn = document.querySelector<HTMLButtonElement>("[data-transform]")!;
 
-  formatBtn.addEventListener("click", () => {
+  formatBtn.addEventListener("click", async () => {
     errorEl.style.display = "none";
-    const result = formatXmlString(xmlInput.value);
+    const result = await formatXmlString(xmlInput.value);
     if (result.valid) {
       output.value = result.formatted ?? "";
       status.textContent = "Formatted";
@@ -93,7 +93,7 @@
     xsltErrorEl.style.display = "none";
   });
 
-  validateXsdBtn.addEventListener("click", () => {
+  validateXsdBtn.addEventListener("click", async () => {
     xsdErrorEl.style.display = "none";
     xsdOkEl.style.display = "none";
     if (!xsdInput.value.trim()) {
@@ -101,7 +101,7 @@
       xsdErrorEl.textContent = "Please provide an XSD schema";
       return;
     }
-    const result = validateXsd(xmlInput.value, xsdInput.value);
+    const result = await validateXsd(xmlInput.value, xsdInput.value);
     if (result.valid) {
       xsdOkEl.style.display = "block";
       xsdOkEl.textContent = "XML is valid against XSD (basic check)";
@@ -111,14 +111,14 @@
     }
   });
 
-  transformBtn.addEventListener("click", () => {
+  transformBtn.addEventListener("click", async () => {
     xsltErrorEl.style.display = "none";
     if (!xsltInput.value.trim()) {
       xsltErrorEl.style.display = "block";
       xsltErrorEl.textContent = "Please provide an XSLT stylesheet";
       return;
     }
-    const result = transformXslt(xmlInput.value, xsltInput.value);
+    const result = await transformXslt(xmlInput.value, xsltInput.value);
     if (result.error) {
       xsltErrorEl.style.display = "block";
       xsltErrorEl.textContent = result.error;

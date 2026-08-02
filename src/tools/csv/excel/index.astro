@@ -192,7 +192,7 @@
       const toJson = document.querySelector<HTMLInputElement>('input[name="dir"][value="to-json"]')!.checked;
       if (toJson) {
         let data: string | Uint8Array;
-        if (isXlsx) data = await readFileAsArrayBuffer(file);
+        if (isXlsx) data = new Uint8Array(await readFileAsArrayBuffer(file));
         else if (isJson) data = JSON.stringify(lastJson);
         else data = await readFileAsText(file);
 

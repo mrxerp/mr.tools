@@ -194,7 +194,7 @@
         inputFormat: inputFormatSel.value as "gpx" | "kml" | "geojson" | "csv",
         outputFormat: outputFormatSel.value as "gpx" | "kml" | "geojson" | "csv",
         simplifyTolerance: simplify,
-        reproject: "wgs84",
+        reproject: "wgs84" as const,
         mergeTracks: mergeCheckbox.checked,
       };
 

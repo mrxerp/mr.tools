@@ -132,7 +132,7 @@ import { downloadText, downloadBlob } from "@/lib/download";
     else if (format === "scss") result = generateSCSSMap(currentPalette);
     else result = generateTailwindConfig(currentPalette);
     output.textContent = result;
-    copyTextWithFeedback(result, output);
+    copyTextWithFeedback(result, output as unknown as HTMLButtonElement);
   }
 
   async function exportPNG() {

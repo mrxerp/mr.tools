@@ -133,7 +133,7 @@
     out.textContent = "Checking…";
     try {
       let data: string | Uint8Array;
-      if (isXlsx) data = await readFileAsArrayBuffer(file);
+      if (isXlsx) data = new Uint8Array(await readFileAsArrayBuffer(file));
       else data = await readFileAsText(file);
       lastResult = await checkNumbers(data, isXlsx, options());
       renderStats(lastResult);

@@ -161,7 +161,7 @@ function jsonPathQuery(obj: unknown, path: string): JsonPathResult[] {
           node = (node as Record<string, unknown>)[key];
           prefixPath += `.${key}`;
         } else {
-          return;
+          return [];
         }
       } else if (/^\d+$/.test(seg)) {
         const index = parseInt(seg, 10);
@@ -169,14 +169,14 @@ function jsonPathQuery(obj: unknown, path: string): JsonPathResult[] {
           node = node[index];
           prefixPath += `[${index}]`;
         } else {
-          return;
+          return [];
         }
       } else {
         if (node && typeof node === "object" && seg in (node as Record<string, unknown>)) {
           node = (node as Record<string, unknown>)[seg];
           prefixPath += `.${seg}`;
         } else {
-          return;
+          return [];
         }
       }
     }
@@ -222,7 +222,7 @@ export function jsonToCsv(json: unknown): string {
     return result;
   }
 
-  const flattened = json.map((item) => {
+  const flattened = json.map<Record<string, unknown>>((item) => {
     if (item && typeof item === "object" && !Array.isArray(item)) {
       return flatten(item as Record<string, unknown>);
     }

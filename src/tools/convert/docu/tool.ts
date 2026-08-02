@@ -41,7 +41,7 @@ async function readZipEntries(data: Uint8Array): Promise<Map<string, Uint8Array>
     if (compression === 0) {
       extracted = fileData;
     } else if (compression === 8) {
-      const stream = new Response(fileData).body!.pipeThrough(new DecompressionStream("deflate"));
+      const stream = new Response(fileData.slice()).body!.pipeThrough(new DecompressionStream("deflate"));
       extracted = new Uint8Array(await new Response(stream).arrayBuffer());
     } else {
       offset += headerSize + compressedSize;

@@ -52,7 +52,7 @@ async function initDOM() {
     XSLTProcessorImpl = xmldom.XSLTProcessor;
     console.log('[xml] DOMParserImpl:', typeof DOMParserImpl);
   } catch (e) {
-    console.error('[xml] xmldom load failed:', e.message);
+    console.error('[xml] xmldom load failed:', e instanceof Error ? e.message : e);
   }
 }
 

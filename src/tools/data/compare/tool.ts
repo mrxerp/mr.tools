@@ -234,7 +234,7 @@ export function deepEqual(a: unknown, b: unknown): boolean {
   if (Array.isArray(a) !== Array.isArray(b)) return false;
 
   if (Array.isArray(a)) {
-    if (a.length !== b.length) return false;
+    if (a.length !== (b as unknown[]).length) return false;
     return a.every((v, i) => deepEqual(v, (b as unknown[])[i]));
   }
 

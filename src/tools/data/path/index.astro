@@ -102,7 +102,7 @@
     const nodes = buildPathTree(data);
     let count = 0;
 
-    function countNodes(nodes: typeof nodes) {
+    function countNodes(nodes: ReturnType<typeof buildPathTree>) {
       for (const n of nodes) {
         count++;
         if (n.children) countNodes(n.children);

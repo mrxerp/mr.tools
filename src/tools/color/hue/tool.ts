@@ -211,12 +211,6 @@ function hexToName(hex: string): string {
     "87ceeb": "SkyBlue",
     "da70d6": "Orchid",
     "fa8072": "Salmon",
-    "ffa500": "Orange",
-    "00ff00": "Lime",
-    "0000ff": "Blue",
-    "ff00ff": "Fuchsia",
-    "ffff00": "Yellow",
-    "00ffff": "Aqua",
   };
   return namedColors[normalized] || "Custom Color";
 }

@@ -206,7 +206,7 @@
 
     try {
       const format = outputFormatSel.value as "stl" | "obj" | "ply" | "gltf";
-      convertedData = writeMesh(parsedMesh, format);
+      convertedData = writeMesh(parsedMesh, format) as string | Uint8Array;
 
       if (typeof convertedData === "string") {
         downloadBtn.style.display = "";

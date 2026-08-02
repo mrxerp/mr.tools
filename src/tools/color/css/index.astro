@@ -166,7 +166,7 @@ import { downloadText } from "@/lib/download";
     else if (type === "react") result = generateSampleComponent(extractedColors, "react");
     else if (type === "vue") result = generateSampleComponent(extractedColors, "vue");
     output.textContent = result;
-    copyTextWithFeedback(result, output);
+    copyTextWithFeedback(result, output as unknown as HTMLButtonElement);
   }
 
   document.querySelector("[data-extract]")!.addEventListener("click", extractColors);

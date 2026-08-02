@@ -290,7 +290,7 @@
 
   document.querySelector("[data-add-stop]")!.addEventListener("click", addNewStop);
   document.querySelector("[data-random-stops]")!.addEventListener("click", randomStops);
-  document.querySelector("[data-copy-css]")!.addEventListener("click", () => copyTextWithFeedback(output.textContent || "", output));
+  document.querySelector("[data-copy-css]")!.addEventListener("click", () => copyTextWithFeedback(output.textContent || "", output as unknown as HTMLButtonElement));
   document.querySelector("[data-download-png]")!.addEventListener("click", () => {
     const canvas = gradientToCanvas(config, 800, 400);
     canvas.toBlob(blob => blob && downloadBlob(blob, "gradient.png"));

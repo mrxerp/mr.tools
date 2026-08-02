@@ -28,12 +28,6 @@
     <span class="field-label">Algorithms</span>
     <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
       <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-        <input type="checkbox" value="MD5" checked data-algo> MD5
-      </label>
-      <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-        <input type="checkbox" value="SHA-1" checked data-algo> SHA-1
-      </label>
-      <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer;">
         <input type="checkbox" value="SHA-256" checked data-algo> SHA-256
       </label>
       <label style="display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer;">
@@ -96,10 +90,10 @@
     errorBox.style.display = "none";
   }
 
-  function getSelectedAlgorithms(): ("MD5" | "SHA-1" | "SHA-256" | "SHA-384" | "SHA-512")[] {
+  function getSelectedAlgorithms(): ("SHA-256" | "SHA-384" | "SHA-512")[] {
     return Array.from(algoCheckboxes)
       .filter((cb) => cb.checked)
-      .map((cb) => cb.value as "MD5" | "SHA-1" | "SHA-256" | "SHA-384" | "SHA-512");
+      .map((cb) => cb.value as "SHA-256" | "SHA-384" | "SHA-512");
   }
 
   function updateUI() {
@@ -121,7 +115,7 @@
   dropZone.addEventListener("drop", (e) => {
     e.preventDefault();
     dropZone.classList.remove("drag");
-    if (e.dataTransfer.files.length > 0) {
+    if (e.dataTransfer && e.dataTransfer.files.length > 0) {
       handleFile(e.dataTransfer.files[0]);
     }
   });

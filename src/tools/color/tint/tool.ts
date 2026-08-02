@@ -1,4 +1,5 @@
 export interface ColorScale {
+  [key: number]: string;
   50: string;
   100: string;
   200: string;
@@ -151,7 +152,7 @@ function generateScale(
     result[level] = rgbToHex(r, g, b);
   });
 
-  return result as ColorScale;
+  return result as unknown as ColorScale;
 }
 
 export function generateColorScale(baseColor: string, options: Partial<ScaleOptions> = {}): ColorScale {

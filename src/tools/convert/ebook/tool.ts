@@ -107,7 +107,7 @@ export async function parseEpub(data: Uint8Array): Promise<EpubResult> {
   }
 
   if (metadata.coverImage) {
-    const coverId = Array.from(manifest.entries()).find(([, v]) => v.href === metadata.coverImage)?.at(0);
+    const coverId = Array.from(manifest.entries()).find(([, v]) => v.href === metadata.coverImage?.mimeType)?.[0];
     if (coverId && resources.has(coverId)) {
       metadata.coverImage = { data: resources.get(coverId)!, mimeType: manifest.get(coverId)?.mimeType || "image/jpeg" };
     }
@@ -168,7 +168,7 @@ function cleanHtml(doc: Document, base: string, resources: Map<string, Uint8Arra
     const src = img.getAttribute("src");
     if (!src) return;
     const fullSrc = new URL(src, base).pathname.split("/").pop() || src;
-    const resourceId = Array.from(manifest.entries()).find(([, v]) => v.href === fullSrc || v.href.endsWith("/" + fullSrc))?.at(0);
+    const resourceId = Array.from(manifest.entries()).find(([, v]) => v.href === fullSrc || v.href.endsWith("/" + fullSrc))?.[0];
     if (resourceId && resources.has(resourceId)) {
       const data = resources.get(resourceId)!;
       const mimeType = manifest.get(resourceId)?.mimeType || "image/jpeg";
@@ -222,7 +222,7 @@ async function readZipEntries(data: Uint8Array): Promise<Map<string, Uint8Array>
     if (compression === 0) {
       extracted = fileData;
     } else if (compression === 8) {
-      const stream = new Response(fileData).body!.pipeThrough(new DecompressionStream("deflate"));
+      const stream = new Response(fileData.slice()).body!.pipeThrough(new DecompressionStream("deflate"));
       extracted = new Uint8Array(await new Response(stream).arrayBuffer());
     } else {
       offset += headerSize + compressedSize;

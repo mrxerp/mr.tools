@@ -204,7 +204,7 @@
     out.textContent = "Building pivot table…";
     try {
       let data: string | Uint8Array;
-      if (isXlsx) data = await readFileAsArrayBuffer(file);
+      if (isXlsx) data = new Uint8Array(await readFileAsArrayBuffer(file));
       else data = await readFileAsText(file);
 
       const config = getConfig();

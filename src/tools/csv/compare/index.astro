@@ -84,7 +84,7 @@
   let fileB: File | null = null;
   let isXlsxA = false;
   let isXlsxB = false;
-  let lastResult: ReturnType<typeof compareSpreadsheets> | null = null;
+  let lastResult: Awaited<ReturnType<typeof compareSpreadsheets>> | null = null;
 
   const options = () => ({
     ignoreCase: optCase.checked,
@@ -185,8 +185,8 @@
     out.textContent = "Comparing…";
     try {
       let dataA: string | Uint8Array, dataB: string | Uint8Array;
-      if (isXlsxA) dataA = await readFileAsArrayBuffer(fileA); else dataA = await readFileAsText(fileA);
-      if (isXlsxB) dataB = await readFileAsArrayBuffer(fileB); else dataB = await readFileAsText(fileB);
+      if (isXlsxA) dataA = new Uint8Array(await readFileAsArrayBuffer(fileA)); else dataA = await readFileAsText(fileA);
+      if (isXlsxB) dataB = new Uint8Array(await readFileAsArrayBuffer(fileB)); else dataB = await readFileAsText(fileB);
       lastResult = await compareSpreadsheets(dataA, dataB, isXlsxA, isXlsxB, options());
       renderStats(lastResult);
       renderGrid(lastResult);
@@ -218,8 +218,9 @@
   run.addEventListener("click", doCompare);
 
   downloadReport.addEventListener("click", () => {
-    if (lastResult && fileA) {
-      downloadText(generateReport(lastResult), swapExtension(fileNameOf(fileA), "txt"), "text/plain");
+    const name = fileNameOf(fileA!);
+    if (lastResult && name) {
+      downloadText(generateReport(lastResult), swapExtension(name, "txt"), "text/plain");
     }
   });
 </script>

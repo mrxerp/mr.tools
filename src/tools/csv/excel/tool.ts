@@ -113,7 +113,7 @@ export async function spreadsheetToJson(
     rows = data.slice(1);
   }
 
-  const columnConfigs = options.columns.length > 0
+  const columnConfigs: ColumnConfig[] = options.columns.length > 0
     ? options.columns
     : headers.map(h => ({ name: h, type: "auto" as ColumnType }));
 
@@ -158,11 +158,11 @@ export async function jsonToSpreadsheet(
       rows = (json as Record<string, unknown>[]).map(r => headers.map(h => r[h]));
     } else if (options.jsonFormat === "columns" && json.length > 0 && typeof json[0] === "object") {
       headers = Object.keys(json[0] as object);
-      const cols = json as Record<string, unknown[]>;
+      const cols = json as unknown as Record<string, unknown[]>;
       const maxLen = Math.max(...headers.map(h => (cols[h] as unknown[])?.length || 0));
       rows = Array.from({ length: maxLen }, (_, i) => headers.map(h => (cols[h] as unknown[])[i]));
     } else {
-      headers = options.includeHeader ? (json[0] as string[]) : json[0].map((_, i) => `col${i + 1}`);
+      headers = options.includeHeader ? (json[0] as string[]) : (json[0] as unknown[]).map((_, i) => `col${i + 1}`);
       rows = options.includeHeader ? (json as unknown[][]).slice(1) : (json as unknown[][]);
     }
   } else if (json && typeof json === "object") {

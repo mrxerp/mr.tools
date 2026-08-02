@@ -46,7 +46,7 @@
     const files: Array<{ name: string; content: string }> = [];
     for await (const [, entry] of handle.entries()) {
       if (entry.kind === "file" && entry.name.endsWith(".md")) {
-        const file = await entry.getFile();
+        const file = await (entry as FileSystemFileHandle).getFile();
         const content = await file.text();
         files.push({ name: entry.name, content });
       }

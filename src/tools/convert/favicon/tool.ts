@@ -36,7 +36,7 @@ export async function generateFavicons(
   mimeType: string,
   options: FaviconOptions = {}
 ): Promise<{ icons: GeneratedIcon[]; manifest: string; html: string }> {
-  const imageBitmap = await createImageBitmap(new Blob([imageData], { type: mimeType }));
+  const imageBitmap = await createImageBitmap(new Blob([imageData.slice()], { type: mimeType }));
   const icons: GeneratedIcon[] = [];
 
   const allSizes = new Set<number>([

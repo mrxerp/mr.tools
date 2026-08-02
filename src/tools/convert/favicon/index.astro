@@ -92,7 +92,7 @@
       imageMimeType = file.type;
 
       const img = new Image();
-      img.src = URL.createObjectURL(new Blob([imageData], { type: imageMimeType }));
+      img.src = URL.createObjectURL(new Blob([imageData.slice()], { type: imageMimeType }));
       await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
 
       outBox.textContent = `Loaded ${file.name} (${img.width}x${img.height}, ${formatBytes(imageData.length)})`;

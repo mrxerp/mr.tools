@@ -1,5 +1,5 @@
 export interface BeautifyOptions {
-  indent?: number;
+  indent?: number | string;
   sortKeys?: boolean;
   minify?: boolean;
 }

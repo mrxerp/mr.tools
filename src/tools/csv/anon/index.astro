@@ -154,12 +154,12 @@
   };
 
   const renderStats = (result: Awaited<ReturnType<typeof anonymize>>) => {
-    const { stats } = result;
+    const s = result.stats;
     stats.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.5rem;margin-top:0.5rem">
-        <div class="output-box" style="margin:0"><div class="field-label">Columns processed</div><div>${stats.columnsProcessed}</div></div>
-        <div class="output-box" style="margin:0"><div class="field-label">Total cells</div><div>${stats.totalCells}</div></div>
-        <div class="output-box" style="margin:0"><div class="field-label">Cells masked</div><div>${stats.maskedCells}</div></div>
+        <div class="output-box" style="margin:0"><div class="field-label">Columns processed</div><div>${s.columnsProcessed}</div></div>
+        <div class="output-box" style="margin:0"><div class="field-label">Total cells</div><div>${s.totalCells}</div></div>
+        <div class="output-box" style="margin:0"><div class="field-label">Cells masked</div><div>${s.maskedCells}</div></div>
       </div>
     `;
   };
@@ -192,7 +192,7 @@
     out.textContent = "Anonymizing…";
     try {
       let data: string | Uint8Array;
-      if (isXlsx) data = await readFileAsArrayBuffer(file);
+      if (isXlsx) data = new Uint8Array(await readFileAsArrayBuffer(file));
       else data = await readFileAsText(file);
 
       const profileConfigs = getProfiles();

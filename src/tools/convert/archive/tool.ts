@@ -129,7 +129,7 @@ async function readTar(data: Uint8Array): Promise<ArchiveResult> {
 }
 
 async function readGzip(data: Uint8Array): Promise<ArchiveResult> {
-  const stream = new Response(data).body!.pipeThrough(new DecompressionStream("gzip"));
+  const stream = new Response(data.slice()).body!.pipeThrough(new DecompressionStream("gzip"));
   const decompressed = new Uint8Array(await new Response(stream).arrayBuffer());
 
   const name = "decompressed";
@@ -200,7 +200,7 @@ async function extractZip(data: Uint8Array, files: Map<string, Uint8Array>, pass
     if (compression === 0) {
       extracted = fileData;
     } else if (compression === 8) {
-      const stream = new Response(fileData).body!.pipeThrough(new DecompressionStream("deflate"));
+      const stream = new Response(fileData.slice()).body!.pipeThrough(new DecompressionStream("deflate"));
       extracted = new Uint8Array(await new Response(stream).arrayBuffer());
     } else {
       throw new Error(`Unsupported compression method: ${compression}`);
@@ -247,7 +247,7 @@ async function extractTar(data: Uint8Array, files: Map<string, Uint8Array>, sele
 }
 
 async function extractGzip(data: Uint8Array, files: Map<string, Uint8Array>): Promise<void> {
-  const stream = new Response(data).body!.pipeThrough(new DecompressionStream("gzip"));
+  const stream = new Response(data.slice()).body!.pipeThrough(new DecompressionStream("gzip"));
   const decompressed = new Uint8Array(await new Response(stream).arrayBuffer());
   files.set("decompressed", decompressed);
 }
@@ -289,7 +289,7 @@ async function createZip(fileList: Array<{ name: string; data: Uint8Array }>, le
     headerView.setUint16(20, nameBytes.length, true);
     headerView.setUint16(22, 0, true);
 
-    const stream = new Response(file.data).body!.pipeThrough(new CompressionStream("deflate", { level }));
+    const stream = new Response(file.data.slice()).body!.pipeThrough(new CompressionStream("deflate"));
     const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
 
     headerView.setUint32(16, compressed.length, true);
@@ -305,7 +305,7 @@ async function createZip(fileList: Array<{ name: string; data: Uint8Array }>, le
 
   for (const file of fileList) {
     const nameBytes = encoder.encode(file.name);
-    const stream = new Response(file.data).body!.pipeThrough(new CompressionStream("deflate", { level }));
+    const stream = new Response(file.data.slice()).body!.pipeThrough(new CompressionStream("deflate"));
     const compressed = new Uint8Array(await new Response(stream).arrayBuffer());
 
     const centralHeader = new ArrayBuffer(46);
@@ -405,7 +405,7 @@ async function createTar(fileList: Array<{ name: string; data: Uint8Array }>): P
 }
 
 async function createGzip(data: Uint8Array, level: number): Promise<Uint8Array> {
-  const stream = new Response(data).body!.pipeThrough(new CompressionStream("gzip", { level }));
+  const stream = new Response(data.slice()).body!.pipeThrough(new CompressionStream("gzip"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 

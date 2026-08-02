@@ -144,7 +144,7 @@
     try {
       let inputData: string | Uint8Array;
       if (isXlsx) {
-        inputData = await readFileAsArrayBuffer(file);
+        inputData = new Uint8Array(await readFileAsArrayBuffer(file));
       } else {
         inputData = await readFileAsText(file);
       }

@@ -281,7 +281,7 @@
         const ws = XLSX.utils.aoa_to_sheet([lastResult.headers, ...lastResult.rows]);
         XLSX.utils.book_append_sheet(wb, ws, "Sorted");
         lastXlsx = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-        out.textContent = `Done: ${lastResult.stats.filteredRows} rows (${lastResult.stats.totalRows} original) · XLSX ${formatBytes(lastXlsx.length)}`;
+        out.textContent = `Done: ${lastResult.stats.filteredRows} rows (${lastResult.stats.totalRows} original) · XLSX ${formatBytes(lastXlsx!.length)}`;
       } else {
         out.textContent = `Done: ${lastResult.stats.filteredRows} rows (${lastResult.stats.totalRows} original)`;
       }
