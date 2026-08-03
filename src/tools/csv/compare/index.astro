@@ -48,10 +48,10 @@
 <style>
   .diff-grid { display:grid; gap:0; font-family:var(--mono); font-size:0.7rem; }
   .diff-header { background:var(--accent-soft); font-weight:600; }
-  .diff-match { background:#e8f5e9; }
-  .diff-mismatch { background:#fdeaea; }
-  .diff-only-a { background:#fff3e0; }
-  .diff-only-b { background:#e3f2fd; }
+  .diff-match { background:color-mix(in srgb,var(--ok) 12%,transparent); }
+  .diff-mismatch { background:color-mix(in srgb,var(--danger) 12%,transparent); }
+  .diff-only-a { background:color-mix(in srgb,var(--warn) 14%,transparent); }
+  .diff-only-b { background:color-mix(in srgb,var(--accent) 12%,transparent); }
   .diff-cell { padding:0.15rem 0.3rem; border:1px solid var(--border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px; }
   .diff-row-num { background:var(--bg); font-weight:600; text-align:right; padding:0.15rem 0.4rem; border:1px solid var(--border); }
 </style>

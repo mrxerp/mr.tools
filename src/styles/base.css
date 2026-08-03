@@ -23,6 +23,24 @@
   --content: min(980px, 100% - 2.5rem);
 }
 
+/* Dark theme — flipped by the theme toggle in Base.astro (data-theme on <html>). */
+[data-theme="dark"] {
+  --bg: #141417;
+  --surface: #1e1e22;
+  --ink: #ecebea;
+  --muted: #a7a6a3;
+  --faint: #6f6e6b;
+  --accent: #9a9bf5;
+  --accent-ink: #17171a;
+  --accent-soft: #2a2a4d;
+  --ok: #4cc07a;
+  --warn: #d9a03f;
+  --danger: #e0655c;
+  --border: #2e2e33;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -109,6 +127,33 @@ pre {
   font-weight: 500;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+/* ---------- theme toggle ---------- */
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.theme-toggle .theme-moon {
+  display: none;
+}
+[data-theme="dark"] .theme-toggle .theme-sun {
+  display: none;
+}
+[data-theme="dark"] .theme-toggle .theme-moon {
+  display: block;
 }
 
 /* ---------- search ---------- */

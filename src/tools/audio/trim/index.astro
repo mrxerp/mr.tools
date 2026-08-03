@@ -54,6 +54,7 @@
 </style>
 
 <script>
+  import type { CutSegment } from "./tool.ts";
   import { clampRange, samplePeaks, formatDuration, cutSegments } from "./tool.ts";
   import { encodeWav } from "../_wav.ts";
   import { readFileAsArrayBuffer, swapExtension } from "@/lib/files";

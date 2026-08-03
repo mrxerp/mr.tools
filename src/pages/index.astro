@@ -11,7 +11,7 @@ for (const t of tools) {
   const fid = t.href.split("/")[2];
   counts.set(fid, (counts.get(fid) ?? 0) + 1);
 }
-const featured = [...tools].slice(0, 8);
+const featured = [...tools].slice(0, 9);
 const total = tools.length;
 ---
 <Base
@@ -21,9 +21,9 @@ const total = tools.length;
 >
   <div class="container">
     <section class="hero">
-      <h1>mr.tools</h1>
+      <h1>Small tools. Big time savers.</h1>
       <p class="lede">
-        {total} small tools that run entirely in your browser. Nothing uploads,
+        {total} tiny tools that run entirely in your browser. Nothing uploads,
         nothing tracks you, and they work offline.
       </p>
       <div class="hero-search">

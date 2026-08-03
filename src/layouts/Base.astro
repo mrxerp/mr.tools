@@ -2,6 +2,7 @@
 // Base — shared document shell: head, header with brand + search, footer, SW.
 import "@/styles/base.css";
 import ToolSearch from "@/components/ToolSearch.astro";
+import Icon from "@/components/Icon.astro";
 
 interface Props {
   title: string;
@@ -17,6 +18,15 @@ const pageTitle = title;
 <!doctype html>
 <html lang="en">
   <head>
+    <script is:inline>
+      (function () {
+        try {
+          var s = localStorage.getItem("theme");
+          var dark = s ? s === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+          if (dark) document.documentElement.dataset.theme = "dark";
+        } catch (e) {}
+      })();
+    </script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="generator" content={Astro.generator} />
@@ -41,6 +51,16 @@ const pageTitle = title;
           <span class="brand-name">mr.tools</span>
         </a>
         <ToolSearch />
+        <button
+          class="theme-toggle"
+          data-theme-toggle
+          type="button"
+          aria-label="Switch to dark theme"
+          title="Toggle theme"
+        >
+          <Icon name="sun" size={18} class="theme-sun" />
+          <Icon name="moon" size={18} class="theme-moon" />
+        </button>
       </div>
     </header>
     <main>
@@ -58,6 +78,20 @@ const pageTitle = title;
         </span>
       </div>
     </footer>
+
+    <script>
+      const toggle = document.querySelector<HTMLButtonElement>("[data-theme-toggle]");
+      toggle?.addEventListener("click", () => {
+        const root = document.documentElement;
+        const next = root.dataset.theme === "dark" ? "light" : "dark";
+        if (next === "dark") root.dataset.theme = "dark";
+        else delete root.dataset.theme;
+        try {
+          localStorage.setItem("theme", next);
+        } catch (e) {}
+        toggle.setAttribute("aria-label", next === "dark" ? "Switch to light theme" : "Switch to dark theme");
+      });
+    </script>
 
     <script>
       if ("serviceWorker" in navigator && import.meta.env.PROD) {
