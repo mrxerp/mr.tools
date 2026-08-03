@@ -256,7 +256,7 @@ export function formatDiffResult(result: DiffResult): string {
   for (const d of result.differences) {
     const left = d.leftValue !== undefined ? JSON.stringify(d.leftValue) : "(absent)";
     const right = d.rightValue !== undefined ? JSON.stringify(d.rightValue) : "(absent)";
-    lines.push(`  ${d.path}: ${d.type} — ${left} → ${right}`);
+    lines.push(`  ${d.path}: ${d.type} - ${left} → ${right}`);
   }
   if (result.leftOnly.length) lines.push(`Left only: ${result.leftOnly.join(", ")}`);
   if (result.rightOnly.length) lines.push(`Right only: ${result.rightOnly.join(", ")}`);

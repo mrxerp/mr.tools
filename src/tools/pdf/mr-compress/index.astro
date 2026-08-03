@@ -1,10 +1,10 @@
 ---
-// mr compress — re-save a PDF as compactly as pdf-lib can manage.
+// mr compress - re-save a PDF as compactly as pdf-lib can manage.
 ---
 <section class="stage">
   <div class="drop-zone" data-zone role="button" tabindex="0">
     <div class="dz-title">Drop a PDF here or click to browse</div>
-    <div class="dz-hint">Runs locally — nothing uploads</div>
+    <div class="dz-hint">Runs locally - nothing uploads</div>
     <input type="file" accept="application/pdf" hidden data-input />
   </div>
   <div class="actions">
@@ -51,7 +51,7 @@
     if (!f) return;
     file = f;
     runBtn.disabled = false;
-    out.textContent = `${fileNameOf(f)} — ${formatBytes(f.size)}. Ready to compress.`;
+    out.textContent = `${fileNameOf(f)} - ${formatBytes(f.size)}. Ready to compress.`;
   }
 
   zone.addEventListener("click", () => input.click());

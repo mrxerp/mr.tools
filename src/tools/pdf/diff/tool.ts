@@ -8,7 +8,7 @@ export interface PixelStats {
 
 export function pixelStats(a: PixelData, b: PixelData, tolerance = 16): PixelStats {
   if (a.length !== b.length)
-    throw new Error("Images differ in size — render both pages at the same scale.");
+    throw new Error("Images differ in size - render both pages at the same scale.");
   const total = a.length / 4;
   let changed = 0;
   for (let i = 0; i < a.length; i += 4) {
@@ -21,7 +21,7 @@ export function pixelStats(a: PixelData, b: PixelData, tolerance = 16): PixelSta
 
 export function differenceMask(a: PixelData, b: PixelData, tolerance = 16): PixelData {
   if (a.length !== b.length)
-    throw new Error("Images differ in size — render both pages at the same scale.");
+    throw new Error("Images differ in size - render both pages at the same scale.");
   const mask = new Uint8ClampedArray(a.length);
   for (let i = 0; i < a.length; i += 4) {
     const delta =

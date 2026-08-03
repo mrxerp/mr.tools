@@ -101,7 +101,7 @@ export function durationSentence(r: DateDiffResult): string {
   if (r.days) parts.push(plural(r.days, "day"));
   if (!parts.length) parts.push("0 days");
   const total = `${r.totalDays.toLocaleString("en-US")} days, ${r.totalWeeks.toFixed(1)} weeks, ${r.totalHours.toLocaleString("en-US")} hours`;
-  return `${parts.join(", ")} — a total of ${total}. Business days (weekdays, both dates counted): ${r.weekdays}.`;
+  return `${parts.join(", ")} - a total of ${total}. Business days (weekdays, both dates counted): ${r.weekdays}.`;
 }
 
 export function weekdayName(date: Date, locale = "en-US"): string {

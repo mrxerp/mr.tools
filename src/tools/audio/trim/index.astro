@@ -1,11 +1,11 @@
 ---
-// mr.trim — waveform preview, trim selection, fades, WAV export.
+// mr.trim - waveform preview, trim selection, fades, WAV export.
 ---
 <section class="stage">
   <div class="drop-zone" data-zone tabindex="0" role="button">
     <input type="file" accept="audio/*" data-file hidden />
     <div class="dz-title">Drop an audio file or click to browse</div>
-    <div class="dz-hint">MP3, WAV, OGG, M4A — decoded locally, nothing uploads.</div>
+    <div class="dz-hint">MP3, WAV, OGG, M4A - decoded locally, nothing uploads.</div>
   </div>
 
   <div data-controls style="display:none">
@@ -159,7 +159,7 @@
     startLabel.textContent = formatDuration(start);
     endLabel.textContent = formatDuration(end);
     durationEl.textContent = removeMode()
-      ? `Removed ${formatDuration(end - start)} — output ${formatDuration(outDur)} of ${formatDuration(buffer.duration)}`
+      ? `Removed ${formatDuration(end - start)} - output ${formatDuration(outDur)} of ${formatDuration(buffer.duration)}`
       : `Kept ${formatDuration(outDur)} of ${formatDuration(buffer.duration)}`;
     exportBtn.disabled = outDur <= 0;
     playBtn.disabled = outDur <= 0;
@@ -240,7 +240,7 @@
     try {
       const segs = segments();
       if (segs.length === 0) {
-        setError("Selection covers the whole file — nothing to keep. Adjust the mode or sliders.");
+        setError("Selection covers the whole file - nothing to keep. Adjust the mode or sliders.");
         return;
       }
       const outDur = segs.reduce((acc, s) => acc + s.dur, 0);
@@ -274,7 +274,7 @@
       exportBtn.textContent = "Exported ✓";
       window.setTimeout(() => (exportBtn.textContent = "Export WAV"), 1500);
     } catch {
-      setError("Rendering failed for that clip — try a shorter selection.");
+      setError("Rendering failed for that clip - try a shorter selection.");
     } finally {
       exportBtn.disabled = outputDur() <= 0;
     }

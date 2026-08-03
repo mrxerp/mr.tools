@@ -9,7 +9,7 @@
     <div class="drop-zone" data-zone>
       <input type="file" class="input" style="display:none" accept=".csv,.xlsx,.xls" data-file />
       <div class="dz-title">Drop CSV or Excel file or click to browse</div>
-      <div class="dz-hint">CSV, XLSX — max 10MB recommended</div>
+      <div class="dz-hint">CSV, XLSX - max 10MB recommended</div>
     </div>
   </div>
 
@@ -136,7 +136,7 @@
       li.style.fontFamily = "var(--mono)";
       const email = c.emails[0] || "no email";
       const phone = c.phones[0] || "no phone";
-      li.textContent = `${c.firstName} ${c.lastName} — ${email} — ${phone}`;
+      li.textContent = `${c.firstName} ${c.lastName} - ${email} - ${phone}`;
       if (!isValidEmail(c.emails[0]) || !isValidPhone(c.phones[0])) {
         li.style.color = "var(--warn)";
       }

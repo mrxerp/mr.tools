@@ -1,5 +1,5 @@
 ---
-// mr.palindrome — palindromes and anagrams in any pasted text.
+// mr.palindrome - palindromes and anagrams in any pasted text.
 ---
 <section class="stage">
   <label class="field">
@@ -50,7 +50,7 @@
     if (items.length === 0) {
       const none = document.createElement("div");
       none.className = "muted";
-      none.textContent = "—";
+      none.textContent = "-";
       el.appendChild(none);
       return;
     }
@@ -74,7 +74,7 @@
     if (list.length === 0) {
       renderList(anag, `Anagrams of "${target}" (none in corpus)`, []);
     } else {
-      renderList(anag, `Anagrams of "${target}"${isPalindrome(target) ? " — it's also a palindrome!" : ""}`, list);
+      renderList(anag, `Anagrams of "${target}"${isPalindrome(target) ? " - it's also a palindrome!" : ""}`, list);
     }
   }
 

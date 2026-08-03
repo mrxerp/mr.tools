@@ -1,5 +1,5 @@
 ---
-// mr sign — draw a signature, drop a PDF, place the image on a page.
+// mr sign - draw a signature, drop a PDF, place the image on a page.
 ---
 <section class="stage">
   <label class="field">
@@ -12,7 +12,7 @@
   </div>
   <div class="drop-zone" data-zone role="button" tabindex="0">
     <div class="dz-title">Drop a PDF here or click to browse</div>
-    <div class="dz-hint">Runs locally — nothing uploads</div>
+    <div class="dz-hint">Runs locally - nothing uploads</div>
     <input type="file" accept="application/pdf" hidden data-input />
   </div>
   <label class="field">
@@ -119,7 +119,7 @@
     if (!f) return;
     file = f;
     runBtn.disabled = false;
-    out.textContent = `${fileNameOf(f)} — ready to sign.`;
+    out.textContent = `${fileNameOf(f)} - ready to sign.`;
   }
 
   zone.addEventListener("click", () => input.click());

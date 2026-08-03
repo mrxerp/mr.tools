@@ -4,7 +4,7 @@
   <div class="drop-zone" data-zone tabindex="0" role="button">
     <input type="file" accept="image/*" data-file hidden />
     <div class="dz-title">Drop an image or click to browse</div>
-    <div class="dz-hint">Convert between PNG, JPEG, and WebP — nothing uploads.</div>
+    <div class="dz-hint">Convert between PNG, JPEG, and WebP - nothing uploads.</div>
   </div>
 
   <div class="grid" data-controls style="display:none;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
@@ -123,7 +123,7 @@
       if (beforeUrl) URL.revokeObjectURL(beforeUrl);
       beforeUrl = URL.createObjectURL(file);
       beforeImg.src = beforeUrl;
-      beforeLabel.textContent = `Before — ${origW}×${origH} (${formatBytes(origSize)})`;
+      beforeLabel.textContent = `Before - ${origW}×${origH} (${formatBytes(origSize)})`;
       formatSelect.value = normalizeFormat(file.type);
       controls.style.display = "";
       preview.style.display = "";
@@ -152,7 +152,7 @@
     afterImg.src = afterUrl;
     const pct = Math.round((1 - currentBlob.size / origSize) * 100);
     const verb = pct > 0 ? `${pct}% smaller` : pct < 0 ? `${-pct}% larger` : "same size";
-    afterLabel.textContent = `After — ${fmt.toUpperCase()} (${formatBytes(currentBlob.size)}), ${verb}`;
+    afterLabel.textContent = `After - ${fmt.toUpperCase()} (${formatBytes(currentBlob.size)}), ${verb}`;
     downloadBtn.disabled = false;
   }
 

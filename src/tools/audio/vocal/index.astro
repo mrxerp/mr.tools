@@ -1,18 +1,18 @@
 ---
-// mr.vocal — phase-cancel the center channel of a stereo track (karaoke).
+// mr.vocal - phase-cancel the center channel of a stereo track (karaoke).
 ---
 <section class="stage">
   <div class="drop-zone" data-zone tabindex="0" role="button">
     <input type="file" accept="audio/*" data-file hidden />
     <div class="dz-title">Drop a stereo track or click to browse</div>
-    <div class="dz-hint">MP3, WAV, OGG, M4A — processed locally, nothing uploads.</div>
+    <div class="dz-hint">MP3, WAV, OGG, M4A - processed locally, nothing uploads.</div>
   </div>
 
   <div data-controls style="display:none">
     <label class="field">
       <span class="field-label">Mode</span>
       <select class="input" data-mode>
-        <option value="remove">Karaoke — remove center (vocals)</option>
+        <option value="remove">Karaoke - remove center (vocals)</option>
         <option value="isolate">Isolate center</option>
       </select>
     </label>
@@ -21,7 +21,7 @@
     </div>
   </div>
   <p class="muted" style="font-size:0.85rem">
-    Phase cancellation removes anything that sits equally in both channels —
+    Phase cancellation removes anything that sits equally in both channels -
     that's usually the lead vocal. Reverb, doubles, and off-center vocals
     survive. The result is mono WAV and there is no real-time preview.
   </p>
@@ -85,7 +85,7 @@
       fileName = file.name;
       controls.style.display = "";
       runBtn.disabled = buffer.numberOfChannels < 2;
-      if (buffer.numberOfChannels < 2) setError("This file is mono — phase cancellation needs a stereo track.");
+      if (buffer.numberOfChannels < 2) setError("This file is mono - phase cancellation needs a stereo track.");
     } catch {
       setError("Could not decode that file as audio.");
     }
@@ -111,8 +111,8 @@
     out.innerHTML = "";
     const el = document.createElement("div");
     el.textContent = modeEl.value === "isolate"
-      ? "Center-isolated WAV exported — this keeps the vocal and drops panned instruments."
-      : "Karaoke WAV exported — vocals that were exactly center should be gone.";
+      ? "Center-isolated WAV exported - this keeps the vocal and drops panned instruments."
+      : "Karaoke WAV exported - vocals that were exactly center should be gone.";
     out.appendChild(el);
   }
 

@@ -4,7 +4,7 @@ export const meta: ToolMeta = {
   slug: "mr-resize",
   name: "mr.resize",
   tagline: "Resize an image to exact dimensions.",
-  description: "mr.resize — Resize an image to exact pixel dimensions. Everything runs in your browser, nothing uploads.",
+  description: "mr.resize - Resize an image to exact pixel dimensions. Everything runs in your browser, nothing uploads.",
   tags: ["image", "resize", "scale", "dimensions"],
   icon: "image",
   difficulty: "Easy",

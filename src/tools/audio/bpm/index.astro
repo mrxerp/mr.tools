@@ -1,18 +1,18 @@
 ---
-// mr.bpm — BPM from a loaded track (onset detection) or manual tap tempo.
+// mr.bpm - BPM from a loaded track (onset detection) or manual tap tempo.
 ---
 <section class="stage">
   <div class="drop-zone" data-zone tabindex="0" role="button">
     <input type="file" accept="audio/*" data-file hidden />
     <div class="dz-title">Drop a track or click to browse</div>
-    <div class="dz-hint">Decoded locally — unpublished material stays on your device.</div>
+    <div class="dz-hint">Decoded locally - unpublished material stays on your device.</div>
   </div>
   <output class="output-box" data-track aria-live="polite"></output>
 
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
     <div>
       <span class="field-label">Estimated BPM</span>
-      <div class="output-box" style="font-size:1.6rem" data-bpm>—</div>
+      <div class="output-box" style="font-size:1.6rem" data-bpm>-</div>
     </div>
     <div>
       <span class="field-label">Manual tap tempo</span>
@@ -20,7 +20,7 @@
         <button class="btn btn-primary" type="button" data-tap>Tap</button>
         <button class="btn" type="button" data-reset disabled>Reset</button>
       </div>
-      <div class="output-box" data-tapbpm>—</div>
+      <div class="output-box" data-tapbpm>-</div>
     </div>
   </div>
   <p class="muted" style="font-size:0.85rem">
@@ -86,16 +86,16 @@
       const bpm = detectBpm(mono, buf.sampleRate);
       trackOut.innerHTML = "";
       const done = document.createElement("div");
-      done.textContent = bpm > 0 ? `${file.name} — ${bpm} BPM` : `${file.name} — no steady beat detected`;
+      done.textContent = bpm > 0 ? `${file.name} - ${bpm} BPM` : `${file.name} - no steady beat detected`;
       trackOut.appendChild(done);
-      bpmEl.textContent = bpm > 0 ? String(bpm) : "—";
+      bpmEl.textContent = bpm > 0 ? String(bpm) : "-";
     } catch {
       trackOut.innerHTML = "";
       const err = document.createElement("div");
       err.className = "error-text";
       err.textContent = "Could not decode that file as audio.";
       trackOut.appendChild(err);
-      bpmEl.textContent = "—";
+      bpmEl.textContent = "-";
     }
   }
 
@@ -109,7 +109,7 @@
 
   resetBtn.addEventListener("click", () => {
     taps.length = 0;
-    tapOut.textContent = "—";
+    tapOut.textContent = "-";
     resetBtn.disabled = true;
   });
 </script>

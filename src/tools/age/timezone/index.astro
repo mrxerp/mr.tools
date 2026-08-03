@@ -1,5 +1,5 @@
 ---
-// mr.timezone — identify a place's IANA timezone and decode abbreviations.
+// mr.timezone - identify a place's IANA timezone and decode abbreviations.
 ---
 <section class="stage">
   <label class="field">
@@ -40,11 +40,11 @@
     };
     push(`${info.city} (${info.zone})`);
     push(`Local time: ${info.localTime} · UTC offset ${info.offsetLabel} (${info.offsetMinutes} min)`);
-    push(`Abbreviation "${info.shortName}" = ${info.longName}${info.observesDST ? " — this zone has daylight saving time" : ""}`);
+    push(`Abbreviation "${info.shortName}" = ${info.longName}${info.observesDST ? " - this zone has daylight saving time" : ""}`);
     if (info.collisions.length > 1) {
       const el = document.createElement("div");
       el.className = "error-text";
-      el.textContent = `Warning: "${info.shortName}" is not unique — it also names: ${info.collisions.filter((z) => z !== info.zone).slice(0, 6).join(", ")}${info.collisions.length > 7 ? ", …" : ""}.`;
+      el.textContent = `Warning: "${info.shortName}" is not unique - it also names: ${info.collisions.filter((z) => z !== info.zone).slice(0, 6).join(", ")}${info.collisions.length > 7 ? ", …" : ""}.`;
       out.appendChild(el);
     } else {
       push(`"${info.shortName}" is unique to ${info.zone} at this moment.`);

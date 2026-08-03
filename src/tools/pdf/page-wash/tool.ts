@@ -41,7 +41,7 @@ export async function washPages(bytes: PdfBytes, pages: number[]): Promise<Uint8
     .filter((p) => Number.isInteger(p) && p >= 1 && p <= total)
     .sort((a, b) => b - a);
   if (targets.length === 0)
-    throw new Error(`No valid pages to wash — this PDF has ${total} page${total === 1 ? "" : "s"}.`);
+    throw new Error(`No valid pages to wash - this PDF has ${total} page${total === 1 ? "" : "s"}.`);
   for (const pageNum of targets) {
     const index = pageNum - 1;
     const { width, height } = doc.getPage(index).getSize();

@@ -1,5 +1,5 @@
 ---
-// ToolPage — identical chrome for every tool page:
+// ToolPage - identical chrome for every tool page:
 // breadcrumb, privacy badge, title block, the tool stage, then related tools.
 import type { ToolRecord } from "@/types/tool";
 import Base from "./Base.astro";
@@ -29,8 +29,8 @@ const related = relatedFor(tool, 3);
     </nav>
 
     <div class="badge-row">
-      <span class="badge"><Icon name="check" size={13} /> Runs in your browser — nothing uploads</span>
-      <span class="badge badge-plain">Offline ready</span>
+      <span class="badge"><Icon name="check" size={13} /> Runs in your browser - nothing uploads</span>
+      <span class="badge badge-plain">Works offline</span>
       <span class="badge badge-plain">{tool.difficulty}</span>
     </div>
 

@@ -1,5 +1,5 @@
 ---
-// mr.url — parse any URL into its parts with decoded query parameters.
+// mr.url - parse any URL into its parts with decoded query parameters.
 ---
 <section class="stage">
   <label class="field">
@@ -67,9 +67,9 @@
     tableBody.append(row("scheme", parts.scheme));
     if (parts.username) tableBody.append(row("username", parts.username));
     if (parts.password) tableBody.append(row("password", parts.password));
-    tableBody.append(row("hostname", parts.hostname || "—"));
+    tableBody.append(row("hostname", parts.hostname || "-"));
     if (parts.port) tableBody.append(row("port", parts.port));
-    tableBody.append(row("path", parts.pathname || "—"));
+    tableBody.append(row("path", parts.pathname || "-"));
     if (parts.fragment) tableBody.append(row("fragment", parts.fragment));
 
     if (parts.query.length > 0) {

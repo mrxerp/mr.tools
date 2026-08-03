@@ -18,7 +18,7 @@
   <div class="drop-zone" data-targets-zone tabindex="0" role="button">
     <input type="file" accept="image/*" multiple data-targets hidden />
     <div class="dz-title">Drop the images to watermark</div>
-    <div class="dz-hint">Select or drop several images — nothing uploads.</div>
+    <div class="dz-hint">Select or drop several images - nothing uploads.</div>
   </div>
 
   <div class="grid" data-controls style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
@@ -233,7 +233,7 @@
       if (previewUrl) URL.revokeObjectURL(previewUrl);
       previewUrl = URL.createObjectURL(blob);
       outImg.src = previewUrl;
-      label.textContent = `Preview — ${img.width}×${img.height}, first of ${targets.length}`;
+      label.textContent = `Preview - ${img.width}×${img.height}, first of ${targets.length}`;
       preview.style.display = "";
     } catch {
       preview.style.display = "none";
@@ -310,7 +310,7 @@
     }
     setStatus(
       done === targets.length
-        ? `Done — ${done} image(s) watermarked. Browsers may ask before saving many downloads.`
+        ? `Done - ${done} image(s) watermarked. Browsers may ask before saving many downloads.`
         : `Stopped after ${done} of ${targets.length}.`,
     );
     runBtn.disabled = false;

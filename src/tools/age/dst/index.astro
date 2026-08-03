@@ -1,5 +1,5 @@
 ---
-// mr.dst — daylight saving transition explorer for any timezone/year.
+// mr.dst - daylight saving transition explorer for any timezone/year.
 ---
 <section class="stage">
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
@@ -56,7 +56,7 @@
       push(`Current UTC offset: ${r.currentOffsetLabel} (${r.currentOffsetMinutes} min).`);
       return;
     }
-    push(`${r.zone} ${r.year} — ${r.inDST ? "currently in daylight saving time" : "currently on standard time"} (${r.currentOffsetLabel}).`);
+    push(`${r.zone} ${r.year} - ${r.inDST ? "currently in daylight saving time" : "currently on standard time"} (${r.currentOffsetLabel}).`);
     if (r.nextChange) {
       const noun = r.nextChange.direction === "start" ? "DST starts" : "DST ends";
       const n = r.nextChange.daysUntil;
@@ -73,7 +73,7 @@
     for (const t of r.transitions) {
       const label = t.direction === "start" ? "starts" : "ends";
       push(
-        `${monthName(t.date)} ${t.date.slice(8, 10)}: DST ${label} — offset ${t.fromOffsetMinutes} → ${t.toOffsetMinutes} min (${offsetToText(t.fromOffsetMinutes)} → ${offsetToText(t.toOffsetMinutes)}).`,
+        `${monthName(t.date)} ${t.date.slice(8, 10)}: DST ${label} - offset ${t.fromOffsetMinutes} → ${t.toOffsetMinutes} min (${offsetToText(t.fromOffsetMinutes)} → ${offsetToText(t.toOffsetMinutes)}).`,
       );
     }
   }

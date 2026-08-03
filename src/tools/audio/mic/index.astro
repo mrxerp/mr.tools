@@ -1,5 +1,5 @@
 ---
-// mr.mic — live mic level meter with noise-floor and clipping feedback.
+// mr.mic - live mic level meter with noise-floor and clipping feedback.
 ---
 <section class="stage">
   <div class="actions">
@@ -14,15 +14,15 @@
       <div class="meter-peak" data-peak-marker></div>
     </div>
     <div class="readouts">
-      <span>RMS: <span data-rms>—</span></span>
-      <span>Peak: <span data-peak>—</span></span>
-      <span>Noise floor: <span data-floor>—</span></span>
+      <span>RMS: <span data-rms>-</span></span>
+      <span>Peak: <span data-peak>-</span></span>
+      <span>Noise floor: <span data-floor>-</span></span>
     </div>
   </label>
 
   <output class="output-box" data-alert aria-live="polite"></output>
   <p class="muted" style="font-size:0.85rem">
-    Nothing is recorded or uploaded — the audio stays in your browser for
+    Nothing is recorded or uploaded - the audio stays in your browser for
     the meter only.
   </p>
   <p class="error-text" data-error style="display:none"></p>
@@ -122,8 +122,8 @@
     stopBtn.disabled = true;
     fill.style.width = "0%";
     peakMarker.style.left = "0%";
-    rmsEl.textContent = "—";
-    peakEl.textContent = "—";
+    rmsEl.textContent = "-";
+    peakEl.textContent = "-";
     alertOut.innerHTML = "";
   }
 
@@ -159,9 +159,9 @@
 
     if (isClipping(peak)) {
       clipCount++;
-      setAlert(`Clipping detected — lower the input gain (${clipCount} hit${clipCount === 1 ? "" : "s"}).`, true);
+      setAlert(`Clipping detected - lower the input gain (${clipCount} hit${clipCount === 1 ? "" : "s"}).`, true);
     } else if (clipCount === 0 && rms > 0) {
-      setAlert("Level looks good — no clipping and signal is audible.");
+      setAlert("Level looks good - no clipping and signal is audible.");
     }
 
     raf = requestAnimationFrame(tick);

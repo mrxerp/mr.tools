@@ -4,7 +4,7 @@ export const meta: ToolMeta = {
   slug: "slugify",
   name: "mr.slugify",
   tagline: "Turn any text into a clean URL slug.",
-  description: "mr.slugify — Turn any text into a clean URL slug.",
+  description: "mr.slugify - Turn any text into a clean URL slug.",
   tags: [],
   icon: "wrench",
   difficulty: "Easy",

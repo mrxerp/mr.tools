@@ -5,6 +5,6 @@ export const meta: FamilyMeta = {
   name: "mr.color",
   tagline: "Color tools for designers and developers.",
   description:
-    "WCAG contrast checking, palette generation, gradient building, color conversion, CVD simulation, and more — all offline, all in your browser.",
+    "WCAG contrast checking, palette generation, gradient building, color conversion, CVD simulation, and more - all offline, all in your browser.",
   icon: "palette",
 };

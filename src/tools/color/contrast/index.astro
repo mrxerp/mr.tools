@@ -137,7 +137,7 @@
     for (const fix of fixes) {
       const tr = document.createElement("tr");
       tr.style.borderBottom = "1px solid var(--border)";
-      const meets = fix.meets.length ? fix.meets.join(", ") : "—";
+      const meets = fix.meets.length ? fix.meets.join(", ") : "-";
       tr.innerHTML = `
         <td style="padding:0.5rem">${fix.original} → ${fix.adjusted}</td>
         <td style="padding:0.5rem"><span class="mono" style="background:${fix.adjusted};color:${contrastRatio(fix.adjusted, bg) > 3 ? "#000" : "#fff"};padding:0.1rem 0.4rem;border-radius:4px">${fix.adjusted}</span></td>

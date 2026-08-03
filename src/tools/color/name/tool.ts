@@ -271,12 +271,12 @@ function generateFacts(hex: string, _name: string): string[] {
   facts.push(`HSL: ${Math.round(hsl.h)}°, ${Math.round(hsl.s)}%, ${Math.round(hsl.l)}%`);
   facts.push(`Closest web-safe: ${getWebSafe(hex)}`);
 
-  if (hsl.l > 80) facts.push("Very light — good for backgrounds");
-  else if (hsl.l < 20) facts.push("Very dark — good for text");
-  else facts.push("Medium lightness — versatile for UI");
+  if (hsl.l > 80) facts.push("Very light - good for backgrounds");
+  else if (hsl.l < 20) facts.push("Very dark - good for text");
+  else facts.push("Medium lightness - versatile for UI");
 
   if (hsl.s < 15) facts.push("Near-neutral gray tone");
-  else if (hsl.s > 80) facts.push("Highly saturated — vibrant and bold");
+  else if (hsl.s > 80) facts.push("Highly saturated - vibrant and bold");
 
   const isWebSafe = [r, g, b].every(c => c % 51 === 0);
   if (isWebSafe) facts.push("This is a traditional web-safe color!");

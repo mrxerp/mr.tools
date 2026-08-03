@@ -1,5 +1,5 @@
 /**
- * mr-tool-new.mjs — scaffolds a new tool folder following the tool contract.
+ * mr-tool-new.mjs - scaffolds a new tool folder following the tool contract.
  *
  * Usage:
  *   node scripts/mr-tool-new.mjs <family> <slug> [name] [tagline]
@@ -48,7 +48,7 @@ export const meta: FamilyMeta = {
   id: ${JSON.stringify(family)},
   name: ${JSON.stringify(newFamilyName)},
   tagline: "A family of tiny mr tools.",
-  description: ${JSON.stringify(`${newFamilyName} — tiny browser-only tools.`)},
+  description: ${JSON.stringify(`${newFamilyName} - tiny browser-only tools.`)},
   icon: "wrench",
 };
 `;
@@ -57,7 +57,7 @@ export const meta: FamilyMeta = {
   console.log(`created family ${familyDir}/_meta.ts`);
 } else if (!existsSync(join(familyDir, "_meta.ts"))) {
   console.error(
-    `family "${family}" has no _meta.ts — create it first or use --new-family`,
+    `family "${family}" has no _meta.ts - create it first or use --new-family`,
   );
   process.exit(1);
 }
@@ -77,7 +77,7 @@ export const meta: ToolMeta = {
   slug: ${JSON.stringify(slug)},
   name: ${JSON.stringify(displayName)},
   tagline: ${JSON.stringify(tagline)},
-  description: ${JSON.stringify(`${displayName} — ${tagline}`)},
+  description: ${JSON.stringify(`${displayName} - ${tagline}`)},
   tags: [],
   icon: "wrench",
   difficulty: "Easy",

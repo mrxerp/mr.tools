@@ -1,10 +1,10 @@
 ---
-// mr redact — preview pages with pdf.js, drag to mark regions, paint ink over them.
+// mr redact - preview pages with pdf.js, drag to mark regions, paint ink over them.
 ---
 <section class="stage">
   <div class="drop-zone" data-zone role="button" tabindex="0">
     <div class="dz-title">Drop a PDF here or click to browse</div>
-    <div class="dz-hint">Runs locally — nothing uploads</div>
+    <div class="dz-hint">Runs locally - nothing uploads</div>
     <input type="file" accept="application/pdf" hidden data-input />
   </div>
   <div class="preview" data-preview hidden>
@@ -281,7 +281,7 @@
     rects.forEach((rect, i) => {
       const li = document.createElement("li");
       li.append(
-        `Page ${rect.page} — x ${rect.x.toFixed(1)}, y ${rect.y.toFixed(1)}, ${rect.width.toFixed(1)} × ${rect.height.toFixed(1)} pt `,
+        `Page ${rect.page} - x ${rect.x.toFixed(1)}, y ${rect.y.toFixed(1)}, ${rect.width.toFixed(1)} × ${rect.height.toFixed(1)} pt `,
       );
       const rm = document.createElement("button");
       rm.type = "button";

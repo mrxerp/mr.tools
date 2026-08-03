@@ -5,7 +5,7 @@ export const meta: ToolMeta = {
   name: "mr.mic",
   tagline: "Check your microphone: live level meter, noise floor, clipping alerts.",
   description:
-    "mr.mic — Watch your microphone's live level, see an estimated noise floor, and get clipping alerts so you can set up before a call or recording. Nothing is recorded or uploaded.",
+    "mr.mic - Watch your microphone's live level, see an estimated noise floor, and get clipping alerts so you can set up before a call or recording. Nothing is recorded or uploaded.",
   tags: ["microphone", "level", "meter", "noise floor", "clipping", "audio"],
   icon: "check",
   difficulty: "Medium",

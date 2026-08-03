@@ -194,7 +194,7 @@
         }
         if (a.width !== b.width || a.height !== b.height) {
           const note = document.createElement("p");
-          note.textContent = "Page sizes differ — the two pages can't be pixel-compared at this scale.";
+          note.textContent = "Page sizes differ - the two pages can't be pixel-compared at this scale.";
           note.className = "diff-stats";
           row.append(a, note, b);
           results.appendChild(row);
@@ -232,7 +232,7 @@
 
       const extra = max - compared;
       const lines: string[] = [];
-      lines.push(`Compared ${compared} page${compared === 1 ? "" : "s"} — ${changedPages} page${changedPages === 1 ? "" : "s"} with changes.`);
+      lines.push(`Compared ${compared} page${compared === 1 ? "" : "s"} - ${changedPages} page${changedPages === 1 ? "" : "s"} with changes.`);
       if (extra > 0) lines.push(`${extra} page${extra === 1 ? "" : "s"} exist in only one document.`);
       out.textContent = lines.join(" ");
     } catch (err) {

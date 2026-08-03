@@ -32,7 +32,7 @@ export async function imagesToPdf(
       const type = detectImageType(img.bytes) ?? img.mime.replace("image/", "");
       if (type === "png") return { image: await doc.embedPng(img.bytes) };
       if (type === "jpg" || type === "jpeg") return { image: await doc.embedJpg(img.bytes) };
-      throw new Error("Unsupported image type — use PNG or JPEG.");
+      throw new Error("Unsupported image type - use PNG or JPEG.");
     }),
   );
 

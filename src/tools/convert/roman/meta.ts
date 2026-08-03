@@ -4,7 +4,7 @@ export const meta: ToolMeta = {
   slug: "roman",
   name: "mr roman",
   tagline: "Convert between decimal numbers and Roman numerals.",
-  description: "mr roman — Convert between decimal numbers and Roman numerals.",
+  description: "mr roman - Convert between decimal numbers and Roman numerals.",
   tags: [],
   icon: "wrench",
   difficulty: "Easy",

@@ -1,5 +1,5 @@
 ---
-// mr.reader — live camera QR/barcode scanner via BarcodeDetector when available.
+// mr.reader - live camera QR/barcode scanner via BarcodeDetector when available.
 ---
 <section class="stage">
   <video data-video playsinline muted style="width:100%;max-width:480px;border-radius:var(--radius-sm);background:#111;display:none"></video>
@@ -91,7 +91,7 @@
       const results = await detector.detect(video);
       for (const r of results) addResult(r);
     } catch {
-      message("Scanning paused — the detector hit an error.", true);
+      message("Scanning paused - the detector hit an error.", true);
       stop();
     }
   }

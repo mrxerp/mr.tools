@@ -4,7 +4,7 @@ export const meta: ToolMeta = {
   slug: "nato",
   name: "mr.nato",
   tagline: "Convert text to and from the NATO phonetic alphabet.",
-  description: "mr.nato — Convert text to and from the NATO phonetic alphabet.",
+  description: "mr.nato - Convert text to and from the NATO phonetic alphabet.",
   tags: [],
   icon: "wrench",
   difficulty: "Easy",

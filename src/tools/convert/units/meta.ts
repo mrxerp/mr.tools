@@ -4,7 +4,7 @@ export const meta: ToolMeta = {
   slug: "units",
   name: "mr units",
   tagline: "Convert between units of temperature, length, weight, volume, and data.",
-  description: "mr units — Convert between units of temperature, length, weight, volume, and data.",
+  description: "mr units - Convert between units of temperature, length, weight, volume, and data.",
   tags: [],
   icon: "wrench",
   difficulty: "Easy",

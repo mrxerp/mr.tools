@@ -4,7 +4,7 @@ export const meta: ToolMeta = {
   slug: "safe",
   name: "safe",
   tagline: "A small mr tool that does one thing well.",
-  description: "safe — A small mr tool that does one thing well.",
+  description: "safe - A small mr tool that does one thing well.",
   tags: [],
   icon: "wrench",
   difficulty: "Easy",

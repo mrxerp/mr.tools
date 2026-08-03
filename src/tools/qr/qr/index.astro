@@ -1,5 +1,5 @@
 ---
-// mr qr — instant QR generation from text or URL, debounced while typing.
+// mr qr - instant QR generation from text or URL, debounced while typing.
 ---
 <section class="stage">
   <label class="field">
@@ -14,10 +14,10 @@
     <label class="field">
       <span class="field-label">Error correction</span>
       <select class="input" data-level>
-        <option value="L">L — ~7% (smallest)</option>
-        <option value="M" selected>M — ~15%</option>
-        <option value="Q">Q — ~25%</option>
-        <option value="H">H — ~30% (most robust)</option>
+        <option value="L">L - ~7% (smallest)</option>
+        <option value="M" selected>M - ~15%</option>
+        <option value="Q">Q - ~25%</option>
+        <option value="H">H - ~30% (most robust)</option>
       </select>
     </label>
   </div>
@@ -93,7 +93,7 @@
       if (id !== latest) return;
       currentSrc = null;
       downloadBtn.disabled = true;
-      message("That text is too long to fit in a QR code — shorten it and try again.", true);
+      message("That text is too long to fit in a QR code - shorten it and try again.", true);
     }
   }
 

@@ -4,7 +4,7 @@
   <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose CSV or XLSX file to sort">
     <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-input hidden />
     <span class="dz-title">Drop a CSV or XLSX file here or click to browse</span>
-    <span class="dz-hint">Multi-key sort, filter rows, reorder columns — instant preview.</span>
+    <span class="dz-hint">Multi-key sort, filter rows, reorder columns - instant preview.</span>
   </div>
 
   <fieldset class="field" data-options style="display:none;margin-top:1rem">
@@ -137,7 +137,7 @@
     row.className = "sort-key-row";
     row.innerHTML = `
       <select class="input" data-sort-col-${id}>
-        <option value="">— Select column —</option>
+        <option value="">- Select column -</option>
         ${headers.map(h => `<option value="${h}" ${h === col ? "selected" : ""}>${h}</option>`).join("")}
       </select>
       <select class="input" data-sort-dir-${id} style="max-width:100px">
@@ -156,7 +156,7 @@
     row.className = "filter-row";
     row.innerHTML = `
       <select class="input" data-filter-col-${id}>
-        <option value="">— Select column —</option>
+        <option value="">- Select column -</option>
         ${headers.map(h => `<option value="${h}" ${h === col ? "selected" : ""}>${h}</option>`).join("")}
       </select>
       <select class="input" data-filter-op-${id} style="max-width:140px">

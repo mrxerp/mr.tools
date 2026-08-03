@@ -1,5 +1,5 @@
 ---
-// mr.vcard — instant vCard QR from form fields, debounced while editing.
+// mr.vcard - instant vCard QR from form fields, debounced while editing.
 ---
 <section class="stage">
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
@@ -13,7 +13,7 @@
     </label>
   </div>
   <label class="field">
-    <span class="field-label">Full name (optional — auto-filled from first/last)</span>
+    <span class="field-label">Full name (optional - auto-filled from first/last)</span>
     <input class="input" type="text" data-full placeholder="Ada Lovelace" />
   </label>
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
@@ -68,10 +68,10 @@
     <label class="field">
       <span class="field-label">Error correction</span>
       <select class="input" data-level>
-        <option value="M" selected>M — ~15%</option>
-        <option value="L">L — ~7% (smallest)</option>
-        <option value="Q">Q — ~25%</option>
-        <option value="H">H — ~30% (most robust)</option>
+        <option value="M" selected>M - ~15%</option>
+        <option value="L">L - ~7% (smallest)</option>
+        <option value="Q">Q - ~25%</option>
+        <option value="H">H - ~30% (most robust)</option>
       </select>
     </label>
   </div>
@@ -174,7 +174,7 @@
       if (id !== latest) return;
       currentSrc = null;
       downloadBtn.disabled = true;
-      message("That card is too long to fit in a QR code — shorten the fields.", true);
+      message("That card is too long to fit in a QR code - shorten the fields.", true);
     }
   }
 

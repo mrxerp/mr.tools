@@ -5,7 +5,7 @@ export const meta: ToolMeta = {
   name: "mr.anniversary",
   tagline: "Milestone anniversaries and the day of any historical date.",
   description:
-    "mr.anniversary — Find your next milestone anniversary (30 years, 100 weeks, 10,000 days), and discover what day of the week any date fell on. Copy the milestone card and share it — nothing uploads, everything runs in your browser.",
+    "mr.anniversary - Find your next milestone anniversary (30 years, 100 weeks, 10,000 days), and discover what day of the week any date fell on. Copy the milestone card and share it - nothing uploads, everything runs in your browser.",
   tags: ["anniversary", "milestone", "date", "day of week", "trivia"],
   icon: "dice",
   difficulty: "Easy",

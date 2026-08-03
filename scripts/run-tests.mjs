@@ -1,5 +1,5 @@
 /**
- * run-tests.mjs — discovers every tool's test.ts below src/tools and runs each.
+ * run-tests.mjs - discovers every tool's test.ts below src/tools and runs each.
  *
  * Test contract: each test.ts exports `export async function runTest()`.
  * Throw an Error on failure. The runner reports per-file results and

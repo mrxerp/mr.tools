@@ -1,5 +1,5 @@
 ---
-// mr.schema — Generate JSON Schema from sample instances and validate data against schemas.
+// mr.schema - Generate JSON Schema from sample instances and validate data against schemas.
 ---
 <section class="stage">
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
@@ -91,7 +91,7 @@ Or a JSON array:
     validationEl.innerHTML = "";
     if (!currentSchema) {
       errorEl.style.display = "block";
-      errorEl.textContent = "No schema to validate against — infer or paste a schema first";
+      errorEl.textContent = "No schema to validate against - infer or paste a schema first";
       return;
     }
     const samples = parseSamples(samplesInput.value);
@@ -109,7 +109,7 @@ Or a JSON array:
           const div = document.createElement("div");
           div.className = "error-text";
           div.style.fontSize = "0.85rem";
-          div.textContent = `Sample ${i + 1}: ${err.path} — ${err.message}`;
+          div.textContent = `Sample ${i + 1}: ${err.path} - ${err.message}`;
           validationEl.appendChild(div);
         }
       }

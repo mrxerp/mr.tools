@@ -256,14 +256,14 @@ export function checkYamlQuoting(input: string): string[] {
       !value.startsWith('"') &&
       !value.startsWith("'")
     ) {
-      warnings.push(`Line ${i + 1}: "${value}" looks like a timestamp but is unquoted — will be parsed as string`);
+      warnings.push(`Line ${i + 1}: "${value}" looks like a timestamp but is unquoted - will be parsed as string`);
     }
     if (
       /^(yes|no|on|off)$/i.test(value) &&
       !value.startsWith('"') &&
       !value.startsWith("'")
     ) {
-      warnings.push(`Line ${i + 1}: "${value}" looks like a boolean but is unquoted — will be parsed as string`);
+      warnings.push(`Line ${i + 1}: "${value}" looks like a boolean but is unquoted - will be parsed as string`);
     }
   }
   return warnings;
@@ -276,7 +276,7 @@ function checkJsonQuotingSafety(jsonInput: string): string[] {
     const jsonStr = JSON.stringify(data);
     const reparsed = JSON.parse(jsonStr);
     if (!deepEqual(data, reparsed)) {
-      warnings.push("Round-trip JSON parse/stringify changed the data — check for precision loss");
+      warnings.push("Round-trip JSON parse/stringify changed the data - check for precision loss");
     }
   } catch {
     // ignore

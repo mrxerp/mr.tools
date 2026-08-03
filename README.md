@@ -1,6 +1,6 @@
 # mr.tools
 
-A growing collection of tiny tools for PDFs, text, images, colors, CSV, code and more. Everything runs in your browser. Nothing uploads, nothing tracks you, and it works offline.
+A growing collection of tiny tools for PDFs, text, images, colors, CSV, code and more. Everything runs in your browser. Nothing uploads, nothing tracks you.
 
 ## Try it
 
@@ -9,7 +9,7 @@ https://mrtools.mrbro.cfd/
 ## Features
 
 - **Private by design.** Every tool runs on the client. Nothing leaves your device.
-- **Offline ready.** Installable as a PWA with a service worker.
+- **Installable PWA.** Everything runs in your browser - nothing uploads.
 - **Free forever.** Open source under the MIT license.
 
 ## Tools

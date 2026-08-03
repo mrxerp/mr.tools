@@ -1,5 +1,5 @@
 ---
-// mr.date diff — exact duration between two dates in every unit.
+// mr.date diff - exact duration between two dates in every unit.
 ---
 <section class="stage">
   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
@@ -60,7 +60,7 @@
       `${weekdayName(start)}, ${iso(start)} → ${weekdayName(end)}, ${iso(end)}`,
       `Duration: ${plural(r.years, "year")}, ${plural(r.months, "month")}, ${plural(r.days, "day")}`,
       `Total: ${plural(r.totalDays, "day")} · ${r.totalWeeks.toFixed(1)} weeks · ${Math.round(r.totalHours).toLocaleString("en-US")} hours · ${Math.round(r.totalMinutes).toLocaleString("en-US")} minutes`,
-      `Business days (Mon–Fri, both dates counted): ${r.weekdays} · weekends: ${r.weekends}`,
+      `Business days (Mon-Fri, both dates counted): ${r.weekdays} · weekends: ${r.weekends}`,
     ];
     for (const line of lines) {
       const el = document.createElement("div");

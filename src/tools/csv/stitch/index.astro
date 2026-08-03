@@ -4,7 +4,7 @@
   <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose CSV or XLSX files to stitch">
     <input type="file" multiple accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-input hidden />
     <span class="dz-title">Drop CSV/XLSX files here or click to browse</span>
-    <span class="dz-hint">Multiple files — sheets will be combined by name or stacked.</span>
+    <span class="dz-hint">Multiple files - sheets will be combined by name or stacked.</span>
   </div>
 
   <ol data-list class="stitch-list" aria-label="Files to stitch"></ol>
@@ -174,7 +174,7 @@
       let html = "";
       for (const sheet of lastResult.sheets) {
         html += `<div style="margin:0.3rem 0;padding:0.5rem;background:var(--bg);border-radius:var(--radius-sm)">
-          <strong>${sheet.name}</strong> (from ${sheet.sourceFile}) — ${sheet.rows.length} rows × ${sheet.headers.length} cols
+          <strong>${sheet.name}</strong> (from ${sheet.sourceFile}) - ${sheet.rows.length} rows × ${sheet.headers.length} cols
         </div>`;
       }
       sheetInfo.innerHTML = html;

@@ -1,5 +1,5 @@
 ---
-// mr.word tide — live writing stats: counts, reading/speaking time, readability.
+// mr.word tide - live writing stats: counts, reading/speaking time, readability.
 ---
 <section class="stage">
   <label class="field">
@@ -41,7 +41,7 @@
   }
 
   function reportCard(s: TextStats): string {
-    const f = s.flesch === null ? "—" : `${s.flesch} (${s.fleschLabel})`;
+    const f = s.flesch === null ? "-" : `${s.flesch} (${s.fleschLabel})`;
     return [
       `Words: ${s.words}`,
       `Characters: ${s.chars}`,
@@ -49,7 +49,7 @@
       `Reading time: ${fmt(s.readingMinutes, s.readingSeconds)}`,
       `Speaking time: ${fmt(s.speakingMinutes, s.speakingSeconds)}`,
       `Flesch reading ease: ${f}`,
-      `Gunning Fog: ${s.fog ?? "—"}`,
+      `Gunning Fog: ${s.fog ?? "-"}`,
     ].join("\n");
   }
 
@@ -63,9 +63,9 @@
       ["Avg word length", String(s.avgWordLength)],
       ["Reading time", fmt(s.readingMinutes, s.readingSeconds)],
       ["Speaking time", fmt(s.speakingMinutes, s.speakingSeconds)],
-      ["Flesch", s.flesch === null ? "—" : String(s.flesch)],
+      ["Flesch", s.flesch === null ? "-" : String(s.flesch)],
       ["Readability", s.fleschLabel],
-      ["Gunning Fog", s.fog === null ? "—" : String(s.fog)],
+      ["Gunning Fog", s.fog === null ? "-" : String(s.fog)],
     ];
     for (const [label, value] of items) stats.appendChild(card(label, value));
   }

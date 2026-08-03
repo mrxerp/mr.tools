@@ -2,7 +2,7 @@
   <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose a PDF to wash">
     <input type="file" accept="application/pdf" data-input hidden />
     <span class="dz-title">Drop a PDF here or click to browse</span>
-    <span class="dz-hint">One PDF — replace the pages you name with blank ones before sharing.</span>
+    <span class="dz-hint">One PDF - replace the pages you name with blank ones before sharing.</span>
   </div>
 
   <label class="field">
@@ -72,7 +72,7 @@
       const bytes = await readFileAsArrayBuffer(file);
       const targets = parsePageList(pagesInput.value, await pdfPageCount(bytes));
       washed = await washPages(bytes, targets);
-      out.textContent = `Blanked page${targets.length === 1 ? "" : "s"} ${targets.join(", ")} — ${formatBytes(washed.byteLength)}.`;
+      out.textContent = `Blanked page${targets.length === 1 ? "" : "s"} ${targets.join(", ")} - ${formatBytes(washed.byteLength)}.`;
       download.hidden = false;
     } catch (err) {
       out.innerHTML = "";

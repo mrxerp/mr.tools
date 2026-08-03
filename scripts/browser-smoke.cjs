@@ -1,4 +1,4 @@
-/* mr.tools browser smoke — runs against a local preview server.
+/* mr.tools browser smoke - runs against a local preview server.
    Loads every tool page, asserts the stage mounts with zero console/page
    errors, checks search works, and drives real interactions through the
    deterministic tools (case, password, age, qr, image resize, pdf merge/split).
@@ -56,7 +56,7 @@ async function genPdf(pageCount, label) {
 /* ---------- runner ---------- */
 const failures = [];
 const pass = (t) => console.log(`  ok   ${t}`);
-const fail = (t, why) => { failures.push(t + " — " + why); console.error(`FAIL   ${t} — ${why}`); };
+const fail = (t, why) => { failures.push(t + " - " + why); console.error(`FAIL   ${t} - ${why}`); };
 
 async function loadCheck(page, route, label) {
   const errs = [];
@@ -74,7 +74,7 @@ async function loadCheck(page, route, label) {
     page.off("pageerror", onPageErr);
     page.off("console", onConsole);
   }
-  // async errors can surface after mount — give scripts a beat
+  // async errors can surface after mount - give scripts a beat
   await page.waitForTimeout(600);
   const mounted = await page.evaluate(() => {
     return { hasSearch: !!document.querySelector("input[type=search]"), hasBadge: document.body.textContent.includes("nothing uploads") };
@@ -351,8 +351,8 @@ async function main() {
   await browser.close();
   console.log("");
   console.log(failures.length === 0
-    ? `SMOKE PASS — ${routes.length}/119 pages load, interactions clean`
-    : `SMOKE FAIL — ${failures.length} issue(s)`);
+    ? `SMOKE PASS - ${routes.length}/119 pages load, interactions clean`
+    : `SMOKE FAIL - ${failures.length} issue(s)`);
   failures.forEach((f) => console.error("  - " + f));
   process.exit(failures.length === 0 ? 0 : 1);
 }

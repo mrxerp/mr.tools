@@ -2,14 +2,14 @@
   <div class="drop-zone" data-zone tabindex="0" role="button" aria-label="Choose a PDF to cut">
     <input type="file" accept="application/pdf" data-input hidden />
     <span class="dz-title">Drop a PDF here or click to browse</span>
-    <span class="dz-hint">One PDF — every page is cut in half, so page 1 becomes pages 1 and 2.</span>
+    <span class="dz-hint">One PDF - every page is cut in half, so page 1 becomes pages 1 and 2.</span>
   </div>
 
   <label class="field">
     <span class="field-label">Cut direction</span>
     <select class="input" data-axis>
-      <option value="vertical">Vertical — left / right halves</option>
-      <option value="horizontal">Horizontal — top / bottom halves</option>
+      <option value="vertical">Vertical - left / right halves</option>
+      <option value="horizontal">Horizontal - top / bottom halves</option>
     </select>
   </label>
 
@@ -74,7 +74,7 @@
     try {
       const bytes = await readFileAsArrayBuffer(file);
       cut = await perforate(bytes, axis.value === "vertical" ? "vertical" : "horizontal");
-      out.textContent = `Cut every page in half — ${formatBytes(cut.byteLength)}. Each source page is now two pages.`;
+      out.textContent = `Cut every page in half - ${formatBytes(cut.byteLength)}. Each source page is now two pages.`;
       download.hidden = false;
     } catch (err) {
       out.innerHTML = "";

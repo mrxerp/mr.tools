@@ -1,5 +1,5 @@
 ---
-// Home — search-first landing page.
+// Home - search-first landing page.
 import Base from "@/layouts/Base.astro";
 import Icon from "@/components/Icon.astro";
 import ToolCard from "@/components/ToolCard.astro";
@@ -16,7 +16,7 @@ const total = tools.length;
 ---
 <Base
   title="mr.tools - Small tools Big time savers"
-  description="mr.tools is a growing library of tiny tools — PDF, text, image, code and more — that run entirely in your browser. Private by design: nothing ever uploads."
+  description="mr.tools is a growing library of tiny tools - PDF, text, image, code and more - that run entirely in your browser. Private by design: nothing ever uploads."
   path="/"
 >
   <div class="container">
@@ -24,14 +24,14 @@ const total = tools.length;
       <h1>Small tools. Big time savers.</h1>
       <p class="lede">
         {total} tiny tools that run entirely in your browser. Nothing uploads,
-        nothing tracks you, and they work offline.
+        nothing tracks you.
       </p>
       <div class="hero-search">
         <ToolSearch size="lg" />
       </div>
       <div class="hero-badges">
         <span class="badge"><Icon name="eye" size={13} /> Privacy first</span>
-        <span class="badge badge-plain">Works offline</span>
+        <span class="badge badge-plain">Runs in your browser</span>
         <span class="badge badge-plain">Free forever</span>
       </div>
     </section>

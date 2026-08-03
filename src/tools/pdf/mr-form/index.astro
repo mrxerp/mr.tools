@@ -1,10 +1,10 @@
 ---
-// mr form — detect PDF form fields and fill them in.
+// mr form - detect PDF form fields and fill them in.
 ---
 <section class="stage">
   <div class="drop-zone" data-zone role="button" tabindex="0">
     <div class="dz-title">Drop a PDF form here or click to browse</div>
-    <div class="dz-hint">Runs locally — nothing uploads</div>
+    <div class="dz-hint">Runs locally - nothing uploads</div>
     <input type="file" accept="application/pdf" hidden data-input />
   </div>
   <div class="fields" data-fields hidden>
@@ -54,7 +54,7 @@
   const inputs: (HTMLInputElement | HTMLSelectElement)[] = [];
 
   function fieldLabel(f: FieldInfo): string {
-    const opts = f.options.length ? ` — ${f.options.join(", ")}` : "";
+    const opts = f.options.length ? ` - ${f.options.join(", ")}` : "";
     const val = f.value ? ` (current: ${f.value})` : "";
     return `${f.name} [${f.type}]${opts}${val}`;
   }
@@ -74,7 +74,7 @@
         select.className = "input";
         const blank = document.createElement("option");
         blank.value = "";
-        blank.textContent = "— select —";
+        blank.textContent = "- select -";
         select.append(blank);
         for (const opt of f.options) {
           const o = document.createElement("option");
@@ -92,7 +92,7 @@
         for (const opt of ["", "on", "off"]) {
           const o = document.createElement("option");
           o.value = opt;
-          o.textContent = opt === "" ? "— leave as is —" : opt === "on" ? "Check" : "Uncheck";
+          o.textContent = opt === "" ? "- leave as is -" : opt === "on" ? "Check" : "Uncheck";
           select.append(o);
         }
         select.setAttribute("data-name", f.name);

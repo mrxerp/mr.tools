@@ -158,8 +158,8 @@
         const cell = document.createElement("div");
         cell.className = "diff-cell";
         const idx = r * dims.cols + c;
-        if (onlyASet.has(r)) { cell.classList.add("diff-only-a"); cell.textContent = "— only in A —"; }
-        else if (onlyBSet.has(r)) { cell.classList.add("diff-only-b"); cell.textContent = "— only in B —"; }
+        if (onlyASet.has(r)) { cell.classList.add("diff-only-a"); cell.textContent = "- only in A -"; }
+        else if (onlyBSet.has(r)) { cell.classList.add("diff-only-b"); cell.textContent = "- only in B -"; }
         else if (idx < diffs.length) {
           const d = diffs[idx];
           cell.textContent = d.match ? d.a : `A:${d.a} | B:${d.b}`;

@@ -1,5 +1,5 @@
 ---
-// mr.speak — pasted text -> spoken audio via the OS speech synthesis voices.
+// mr.speak - pasted text -> spoken audio via the OS speech synthesis voices.
 ---
 <section class="stage">
   <label class="field">
@@ -28,7 +28,7 @@
   </div>
   <p class="muted" style="font-size:0.85rem">
     Speech runs entirely on your device. Recording captures the speech output
-    where the browser allows it — some browsers record silence and can't be
+    where the browser allows it - some browsers record silence and can't be
     captured by a web page.
   </p>
   <output class="output-box" data-out aria-live="polite"></output>
@@ -136,7 +136,7 @@
       if (silent) {
         downloadBtn.disabled = true;
         setStatus(
-          "This browser captured silence — most browsers won't route speech output into a recorder. " +
+          "This browser captured silence - most browsers won't route speech output into a recorder. " +
             "Play it through speakers and record with your OS, or use a screen recorder with audio.",
         );
       } else {

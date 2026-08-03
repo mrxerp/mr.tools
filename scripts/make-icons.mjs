@@ -1,5 +1,5 @@
 /**
- * make-icons.mjs — generates the mr icon set with zero dependencies.
+ * make-icons.mjs - generates the mr icon set with zero dependencies.
  *
  * Draws the "focus target" mark (ring + dot) on the mr accent square and
  * writes PNGs into public/icons/:

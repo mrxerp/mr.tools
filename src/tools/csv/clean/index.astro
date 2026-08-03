@@ -82,7 +82,7 @@
   const renderLog = (result: ReturnType<typeof cleanCSV>) => {
     log.innerHTML = "";
     if (result.changes.length === 0) {
-      log.textContent = "No changes made — file was already clean.";
+      log.textContent = "No changes made - file was already clean.";
       return;
     }
     const ul = document.createElement("ul");

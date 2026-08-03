@@ -1,4 +1,4 @@
-/* mr design system — tokens, chrome, and shared tool-stage classes.
+/* mr design system - tokens, chrome, and shared tool-stage classes.
    Every tool page and layout imports this once via Base.astro. */
 
 :root {
@@ -23,7 +23,7 @@
   --content: min(980px, 100% - 2.5rem);
 }
 
-/* Dark theme — flipped by the theme toggle in Base.astro (data-theme on <html>). */
+/* Dark theme - flipped by the theme toggle in Base.astro (data-theme on <html>). */
 [data-theme="dark"] {
   --bg: #141417;
   --surface: #1e1e22;

@@ -4,7 +4,7 @@ export const meta: ToolMeta = {
   slug: "mr-compress",
   name: "mr.compress",
   tagline: "Shrink a PDF file size.",
-  description: "mr.compress — Shrink a PDF file size. Re-serializes the document, drops unused objects, and picks the most compact object-stream layout. Everything runs in your browser — nothing uploads.",
+  description: "mr.compress - Shrink a PDF file size. Re-serializes the document, drops unused objects, and picks the most compact object-stream layout. Everything runs in your browser - nothing uploads.",
   tags: ["pdf", "compress", "shrink", "reduce", "size"],
   icon: "compress",
   difficulty: "Medium",

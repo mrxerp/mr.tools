@@ -1,10 +1,10 @@
 ---
-// mr ocr — read the searchable text layer out of a PDF (honest scaffold: no true OCR yet).
+// mr ocr - read the searchable text layer out of a PDF (honest scaffold: no true OCR yet).
 ---
 <section class="stage">
   <div class="drop-zone" data-zone role="button" tabindex="0">
     <div class="dz-title">Drop a PDF here or click to browse</div>
-    <div class="dz-hint">Runs locally — nothing uploads</div>
+    <div class="dz-hint">Runs locally - nothing uploads</div>
     <input type="file" accept="application/pdf" hidden data-input />
   </div>
   <div class="actions">
@@ -18,7 +18,7 @@
     <div data-page-blocks></div>
   </div>
   <div class="honest">
-    <strong>What this extracts is the searchable text layer already inside the PDF</strong> —
+    <strong>What this extracts is the searchable text layer already inside the PDF</strong> -
     the invisible text that makes a document selectable. It is not true OCR of images.
     If a page shows no text, it is likely a pure scan; real OCR (tesseract) is a planned
     upgrade for a future version.
@@ -77,7 +77,7 @@
   if (!zone || !input || !runBtn || !out || !results || !copyAllBtn || !pageBlocks)
     throw new Error("mr ocr mount failed");
 
-  const NO_TEXT = "No text layer found — this is a scanned image; true OCR is coming soon.";
+  const NO_TEXT = "No text layer found - this is a scanned image; true OCR is coming soon.";
 
   let file: File | null = null;
   let pages: string[] = [];
@@ -86,7 +86,7 @@
     if (!f) return;
     file = f;
     runBtn.disabled = false;
-    out.textContent = `${fileNameOf(f)} — ready to extract.`;
+    out.textContent = `${fileNameOf(f)} - ready to extract.`;
   }
 
   zone.addEventListener("click", () => input.click());

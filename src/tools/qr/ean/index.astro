@@ -1,9 +1,9 @@
 ---
-// mr.ean — batch EAN-13 barcode generator. Run button processes pasted numbers.
+// mr.ean - batch EAN-13 barcode generator. Run button processes pasted numbers.
 ---
 <section class="stage">
   <label class="field">
-    <span class="field-label">Product numbers (one per line — 12 digits gets a check digit added, 13 is validated)</span>
+    <span class="field-label">Product numbers (one per line - 12 digits gets a check digit added, 13 is validated)</span>
     <textarea class="input" data-list placeholder="400638133393&#10;590123412345"></textarea>
   </label>
   <div class="actions">
@@ -81,7 +81,7 @@
       if (!item.ok) {
         const err = document.createElement("div");
         err.className = "error-text";
-        err.textContent = `${raw} — ${item.note}`;
+        err.textContent = `${raw} - ${item.note}`;
         out.appendChild(err);
         continue;
       }

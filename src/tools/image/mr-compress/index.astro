@@ -4,7 +4,7 @@
   <div class="drop-zone" data-zone tabindex="0" role="button">
     <input type="file" accept="image/*" data-file hidden />
     <div class="dz-title">Drop an image or click to browse</div>
-    <div class="dz-hint">PNG, JPEG, or WebP — nothing uploads.</div>
+    <div class="dz-hint">PNG, JPEG, or WebP - nothing uploads.</div>
   </div>
 
   <div class="grid" data-controls style="display:none;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
@@ -142,8 +142,8 @@
       cls === "" ? `${pct}%` : `<span class="${cls}">${pct > 0 ? `${pct}% saved` : `${-pct}% larger`}</span>`;
     const note =
       srcType === "image/png"
-        ? "PNG re-encoding rarely shrinks a file — this image was converted to JPEG instead."
-        : "Compression is lossy — quality drops as the file shrinks.";
+        ? "PNG re-encoding rarely shrinks a file - this image was converted to JPEG instead."
+        : "Compression is lossy - quality drops as the file shrinks.";
     outBox.innerHTML = `<div>Original ${formatBytes(origSize)} → ${formatBytes(currentBlob.size)} · ${badge}</div><div class="muted">${note}</div>`;
     outBox.style.display = "block";
     downloadBtn.disabled = false;

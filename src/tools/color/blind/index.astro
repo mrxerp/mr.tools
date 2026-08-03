@@ -211,7 +211,7 @@
     let report = `CVD Type: ${getCVDName(type)}\n\n`;
     risks.forEach(risk => {
       if (risk.risky) {
-        report += `⚠ RISKY: ${risk.foreground} on ${risk.background} — Original: ${risk.originalRatio}:1, Simulated: ${risk.simulatedRatio}:1\n`;
+        report += `⚠ RISKY: ${risk.foreground} on ${risk.background} - Original: ${risk.originalRatio}:1, Simulated: ${risk.simulatedRatio}:1\n`;
       }
     });
     if (!risks.some(r => r.risky)) {

@@ -64,12 +64,12 @@ function verdictFor(
   mean: number,
 ): string {
   const parts: string[] = [];
-  if (faded) parts.push("faded — true blacks are missing");
-  if (clipped) parts.push("clipped — highlights are blown out");
+  if (faded) parts.push("faded - true blacks are missing");
+  if (clipped) parts.push("clipped - highlights are blown out");
   if (vignette < 0.85) parts.push("vignette or darkened corners");
   if (parts.length === 0) {
-    if (mean < 80) parts.push("underexposed — overall too dark");
-    else if (mean > 200) parts.push("overexposed — overall too bright");
+    if (mean < 80) parts.push("underexposed - overall too dark");
+    else if (mean > 200) parts.push("overexposed - overall too bright");
     else parts.push("no strong fading signs detected");
   }
   return parts.join("; ");

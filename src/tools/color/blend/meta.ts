@@ -4,7 +4,7 @@ export const meta: ToolMeta = {
   slug: "blend",
   name: "blend",
   tagline: "A small mr tool that does one thing well.",
-  description: "blend — A small mr tool that does one thing well.",
+  description: "blend - A small mr tool that does one thing well.",
   tags: [],
   icon: "wrench",
   difficulty: "Easy",

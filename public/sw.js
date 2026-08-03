@@ -1,4 +1,4 @@
-/* mr.tools service worker — stale-while-revalidate, offline fallback to home. */
+/* mr.tools service worker - stale-while-revalidate, offline fallback to home. */
 const CACHE = "mr-tools-v1";
 const PRECACHE = ["/", "/favicon.svg", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
