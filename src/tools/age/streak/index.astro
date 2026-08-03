@@ -15,7 +15,7 @@
       <button class="button button--secondary" data-next type="button">▶</button>
     </span>
   </div>
-  <div class="grid" data-grid role="grid" aria-label="habit calendar"></div>
+  <div class="streak-grid" data-grid role="grid" aria-label="habit calendar"></div>
   <div class="weekdays">
     <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span>
     <span>Thu</span><span>Fri</span><span>Sat</span>
@@ -33,7 +33,7 @@
   </div>
 </section>
 
-<style>
+<style is:global>
   .streak-head {
     display: flex;
     align-items: center;
@@ -48,6 +48,12 @@
   .streak-nav strong {
     min-width: 7rem;
     text-align: center;
+  }
+  .streak-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.25rem;
+    margin-block: 1.2rem 0;
   }
   .weekdays {
     display: grid;

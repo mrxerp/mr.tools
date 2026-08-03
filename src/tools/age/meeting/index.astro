@@ -35,7 +35,7 @@
   </div>
 </section>
 
-<style>
+<style is:global>
   .meet-zones {
     display: flex;
     flex-wrap: wrap;
@@ -184,7 +184,7 @@
     const first = document.createElement("th");
     first.textContent = `${zones[0]} local`;
     headRow.appendChild(first);
-    for (const z of zones) {
+    for (const z of zones.slice(1)) {
       const th = document.createElement("th");
       th.textContent = z;
       headRow.appendChild(th);
@@ -200,7 +200,7 @@
       time.className = "time";
       time.textContent = row.refLocal;
       tr.appendChild(time);
-      for (const cell of row.cells) {
+      for (const cell of row.cells.slice(1)) {
         const td = document.createElement("td");
         td.textContent = cell.local;
         td.className = cell.working ? "working" : "not";
