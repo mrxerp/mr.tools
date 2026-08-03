@@ -1,0 +1,61 @@
+---
+// mr math — evaluate math expressions with a safe local parser.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Expression</span>
+    <input class="input mono" type="text" placeholder="e.g. 2 + 3 * 4" data-expr />
+  </label>
+
+  <div class="field">
+    <span class="field-label">Result</span>
+    <output class="output-box" data-out aria-live="polite"></output>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Examples</span>
+    <div class="actions">
+      <button class="btn" type="button" data-chip>2 + 3 * 4</button>
+      <button class="btn" type="button" data-chip>(2^10)</button>
+      <button class="btn" type="button" data-chip>sqrt(81)</button>
+      <button class="btn" type="button" data-chip>min(3, 7)</button>
+      <button class="btn" type="button" data-chip>pi</button>
+      <button class="btn" type="button" data-chip>2^3^2</button>
+    </div>
+  </div>
+
+  <output class="error-text" data-error aria-live="polite"></output>
+</section>
+
+<script>
+  import { evaluate } from "./tool.ts";
+
+  const exprEl = document.querySelector<HTMLInputElement>("[data-expr]");
+  const outEl = document.querySelector<HTMLOutputElement>("[data-out]");
+  const errorEl = document.querySelector<HTMLOutputElement>("[data-error]");
+  const chips = document.querySelectorAll<HTMLButtonElement>("[data-chip]");
+
+  if (!exprEl || !outEl || !errorEl) {
+    throw new Error("mr math mount failed");
+  }
+
+  function render() {
+    errorEl.textContent = "";
+    try {
+      outEl.textContent = String(evaluate(exprEl.value));
+    } catch (err) {
+      outEl.textContent = "";
+      errorEl.textContent = err instanceof Error ? err.message : "Invalid expression";
+    }
+  }
+
+  chips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      exprEl.value = chip.textContent ?? "";
+      render();
+    });
+  });
+
+  exprEl.addEventListener("input", render);
+  render();
+</script>

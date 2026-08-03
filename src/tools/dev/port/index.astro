@@ -1,0 +1,92 @@
+---
+// mr port — random TCP/UDP ports from the IANA ranges.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
+    <label class="field">
+      <span class="field-label">Range</span>
+      <select class="input" data-range>
+        <option value="well-known">Well-known (0-1023)</option>
+        <option value="registered" selected>Registered (1024-49151)</option>
+        <option value="dynamic">Dynamic (49152-65535)</option>
+      </select>
+    </label>
+    <label class="field">
+      <span class="field-label">Count (1-20)</span>
+      <input class="input mono" type="number" min="1" max="20" value="5" data-count />
+    </label>
+  </div>
+
+  <div class="field">
+    <label style="display: inline-flex; align-items: center; gap: 0.4rem;">
+      <input type="checkbox" data-exclude checked /> Exclude common conflicts
+    </label>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-generate>Generate</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+
+  <p class="muted" style="font-size: 0.85rem; margin-top: 1rem;">
+    IANA splits the 0-65535 space into well-known (0-1023), registered (1024-49151), and
+    dynamic/private (49152-65535) ranges. Ports are generated with cryptographically secure
+    randomness and never leave your browser.
+  </p>
+</section>
+
+<script>
+  import { randomPort, classifyPort, RANGES, COMMON_CONFLICTS, type PortRange } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const rangeEl = document.querySelector<HTMLSelectElement>("[data-range]");
+  const countEl = document.querySelector<HTMLInputElement>("[data-count]");
+  const excludeEl = document.querySelector<HTMLInputElement>("[data-exclude]");
+  const genBtn = document.querySelector<HTMLButtonElement>("[data-generate]");
+  const out = document.querySelector<HTMLOutputElement>("[data-out]");
+
+  if (!rangeEl || !countEl || !excludeEl || !genBtn || !out) {
+    throw new Error("mr port mount failed");
+  }
+
+  const conflicts = new Set(COMMON_CONFLICTS);
+
+  function render() {
+    const key = rangeEl.value as PortRange;
+    const [min, max] = RANGES[key];
+    const count = Math.min(20, Math.max(1, Math.round(Number(countEl.value) || 0)));
+    const exclude = excludeEl.checked;
+    const ports: number[] = [];
+    let guard = 0;
+    while (ports.length < count && guard < 10000) {
+      guard += 1;
+      const p = randomPort(min, max);
+      if (exclude && conflicts.has(p)) continue;
+      ports.push(p);
+    }
+    out.innerHTML = "";
+    for (const p of ports) {
+      const row = document.createElement("div");
+      row.style.display = "flex";
+      row.style.alignItems = "center";
+      row.style.gap = "0.8rem";
+      const num = document.createElement("span");
+      num.textContent = String(p);
+      num.style.fontWeight = "600";
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = classifyPort(p);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn";
+      btn.textContent = "Copy";
+      btn.addEventListener("click", () => copyTextWithFeedback(String(p), btn));
+      row.append(num, badge, btn);
+      out.appendChild(row);
+    }
+  }
+
+  genBtn.addEventListener("click", render);
+  render();
+</script>

@@ -20,10 +20,12 @@
   },
   "dependencies": {
     "astro": "^5.0.0",
+    "bcryptjs": "^3.0.3",
     "docx": "^9.7.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
     "qrcode": "^1.5.4",
+    "sql-formatter": "^15.8.2",
     "xlsx": "^0.18.5",
     "xmldom": "^0.6.0"
   },

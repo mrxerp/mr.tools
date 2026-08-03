@@ -1,0 +1,100 @@
+---
+// mr.url — parse any URL into its parts with decoded query parameters.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">URL</span>
+    <input class="input" type="text" placeholder="https://user:pass@example.com:8443/path?q=1#top" data-input />
+  </label>
+
+  <div class="field" data-table>
+    <span class="field-label">Parts</span>
+    <table data-parts style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="field" data-query-field style="display: none;">
+    <span class="field-label">Query parameters</span>
+    <div data-query></div>
+  </div>
+
+  <output class="output-box error-text" data-error style="display: none;"></output>
+</section>
+
+<script>
+  import { parseUrl, type UrlParts } from "./tool.ts";
+
+  const inputEl = document.querySelector<HTMLInputElement>("[data-input]")!;
+  const tableBody = document.querySelector<HTMLTableSectionElement>("[data-parts] tbody")!;
+  const queryField = document.querySelector<HTMLDivElement>("[data-query-field]")!;
+  const queryOut = document.querySelector<HTMLDivElement>("[data-query]")!;
+  const errorEl = document.querySelector<HTMLOutputElement>("[data-error]")!;
+  if (!inputEl || !tableBody || !queryField || !queryOut || !errorEl) {
+    throw new Error("mr url mount failed");
+  }
+
+  function row(label: string, value: string) {
+    const tr = document.createElement("tr");
+    const th = document.createElement("th");
+    th.textContent = label;
+    th.style.textAlign = "left";
+    th.style.padding = "0.2rem 0.8rem 0.2rem 0";
+    th.style.color = "var(--muted)";
+    th.style.fontWeight = "600";
+    const td = document.createElement("td");
+    td.textContent = value;
+    td.style.padding = "0.2rem 0";
+    td.style.fontFamily = "var(--mono)";
+    tr.append(th, td);
+    return tr;
+  }
+
+  function render() {
+    errorEl.style.display = "none";
+    tableBody.textContent = "";
+    queryField.style.display = "none";
+    queryOut.textContent = "";
+    if (!inputEl.value.trim()) return;
+    let parts: UrlParts;
+    try {
+      parts = parseUrl(inputEl.value);
+    } catch (err) {
+      errorEl.textContent = err instanceof Error ? err.message : "Invalid URL";
+      errorEl.style.display = "block";
+      return;
+    }
+    tableBody.append(row("scheme", parts.scheme));
+    if (parts.username) tableBody.append(row("username", parts.username));
+    if (parts.password) tableBody.append(row("password", parts.password));
+    tableBody.append(row("hostname", parts.hostname || "—"));
+    if (parts.port) tableBody.append(row("port", parts.port));
+    tableBody.append(row("path", parts.pathname || "—"));
+    if (parts.fragment) tableBody.append(row("fragment", parts.fragment));
+
+    if (parts.query.length > 0) {
+      queryField.style.display = "block";
+      for (const p of parts.query) {
+        const line = document.createElement("div");
+        line.style.fontFamily = "var(--mono)";
+        line.style.fontSize = "0.88rem";
+        line.style.marginBottom = "0.15rem";
+        const key = document.createElement("span");
+        key.textContent = p.key;
+        key.style.color = "var(--accent)";
+        const val = document.createElement("span");
+        val.textContent = ` = ${p.value}`;
+        line.append(key, val);
+        queryOut.appendChild(line);
+      }
+    }
+  }
+
+  let debounce: number;
+  inputEl.addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = window.setTimeout(render, 200);
+  });
+
+  render();
+</script>

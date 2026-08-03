@@ -1,0 +1,105 @@
+---
+// mr.meta — Generate meta and Open Graph tags for any web page.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Title <span class="muted" data-title-count></span></span>
+    <input class="input" type="text" placeholder="Page title…" data-title />
+  </div>
+  <div class="field">
+    <span class="field-label">Description <span class="muted" data-desc-count></span></span>
+    <textarea class="input" rows="3" placeholder="Page description…" data-description></textarea>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))">
+    <div class="field">
+      <span class="field-label">URL</span>
+      <input class="input" type="url" placeholder="https://example.com/page" data-url />
+    </div>
+    <div class="field">
+      <span class="field-label">Canonical URL (optional)</span>
+      <input class="input" type="url" placeholder="Overrides URL if set" data-canonical />
+    </div>
+    <div class="field">
+      <span class="field-label">Image URL</span>
+      <input class="input" type="url" placeholder="https://example.com/og.png" data-image />
+    </div>
+    <div class="field">
+      <span class="field-label">Type</span>
+      <input class="input" type="text" placeholder="website, article, …" data-type />
+    </div>
+    <div class="field">
+      <span class="field-label">Site Name</span>
+      <input class="input" type="text" placeholder="Site name" data-site-name />
+    </div>
+    <div class="field">
+      <span class="field-label">Twitter Card</span>
+      <input class="input" type="text" placeholder="summary_large_image" data-twitter-card />
+    </div>
+    <div class="field">
+      <span class="field-label">Theme Color</span>
+      <input class="input" type="text" placeholder="#ffffff" data-theme-color />
+    </div>
+    <div class="field">
+      <span class="field-label">Robots</span>
+      <input class="input" type="text" placeholder="index,follow" data-robots />
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" data-copy>Copy tags</button>
+    <button class="btn" data-clear>Clear</button>
+  </div>
+  <span class="field-label" style="margin-top:1rem">Preview</span>
+  <pre class="output-box" data-output aria-live="polite"></pre>
+</section>
+
+<script>
+  import { buildMetaTags, titleLength, descriptionLength } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const fields = {
+    title: document.querySelector<HTMLInputElement>("[data-title]")!,
+    description: document.querySelector<HTMLTextAreaElement>("[data-description]")!,
+    url: document.querySelector<HTMLInputElement>("[data-url]")!,
+    canonical: document.querySelector<HTMLInputElement>("[data-canonical]")!,
+    image: document.querySelector<HTMLInputElement>("[data-image]")!,
+    type: document.querySelector<HTMLInputElement>("[data-type]")!,
+    siteName: document.querySelector<HTMLInputElement>("[data-site-name]")!,
+    twitterCard: document.querySelector<HTMLInputElement>("[data-twitter-card]")!,
+    themeColor: document.querySelector<HTMLInputElement>("[data-theme-color]")!,
+    robots: document.querySelector<HTMLInputElement>("[data-robots]")!,
+  };
+  const output = document.querySelector<HTMLElement>("[data-output]")!;
+  const titleCount = document.querySelector<HTMLElement>("[data-title-count]")!;
+  const descCount = document.querySelector<HTMLElement>("[data-desc-count]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
+
+  let lastResult = "";
+
+  function readInput() {
+    const values: Record<string, string> = {};
+    for (const [key, el] of Object.entries(fields)) {
+      values[key] = el.value.trim();
+    }
+    return values;
+  }
+
+  function run() {
+    const v = readInput();
+    titleCount.textContent = `Title ${titleLength(v.title)}/60`;
+    descCount.textContent = `Description ${descriptionLength(v.description)}/160`;
+    lastResult = buildMetaTags(v);
+    output.textContent = lastResult;
+  }
+
+  for (const el of Object.values(fields)) {
+    el.addEventListener("input", run);
+  }
+  copyBtn.addEventListener("click", () => copyTextWithFeedback(lastResult, copyBtn));
+  clearBtn.addEventListener("click", () => {
+    for (const el of Object.values(fields)) el.value = "";
+    run();
+  });
+
+  run();
+</script>

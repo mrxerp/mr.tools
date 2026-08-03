@@ -1,0 +1,32 @@
+---
+// mr.email
+// Edit this page: input zone → actions → output.
+// Use shared classes from src/styles/base.css and helpers from @/lib.
+// Move any pure logic into ./tool.ts and cover it in ./test.ts.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Input</span>
+    <textarea class="input" rows="5" placeholder="Paste here…"></textarea>
+  </label>
+  <div class="actions">
+    <button class="btn btn-primary" id="go">Transform</button>
+  </div>
+  <output class="output-box" id="out" aria-live="polite"></output>
+</section>
+
+<script>
+  import { transform } from "./tool.ts";
+
+  const input = document.querySelector<HTMLTextAreaElement>(".input");
+  const out = document.querySelector<HTMLOutputElement>("#out");
+  const go = document.querySelector<HTMLButtonElement>("#go");
+
+  const run = () => {
+    if (!input || !out) return;
+    out.textContent = transform(input.value);
+  };
+
+  go?.addEventListener("click", run);
+  input?.addEventListener("input", run);
+</script>

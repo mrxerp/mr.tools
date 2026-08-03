@@ -1,0 +1,86 @@
+---
+// mr.http-status — Look up HTTP status codes by number or keyword.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Search</span>
+    <input class="input" type="search" placeholder="Code or keyword, e.g. 404, redirect, teapot…" data-query />
+  </div>
+  <div class="actions" data-chips>
+    <button class="btn btn-primary" type="button" data-cat="all">All</button>
+    <button class="btn" type="button" data-cat="1xx">1xx</button>
+    <button class="btn" type="button" data-cat="2xx">2xx</button>
+    <button class="btn" type="button" data-cat="3xx">3xx</button>
+    <button class="btn" type="button" data-cat="4xx">4xx</button>
+    <button class="btn" type="button" data-cat="5xx">5xx</button>
+  </div>
+  <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr))" data-results></div>
+  <div class="muted" data-empty style="display:none"></div>
+</section>
+
+<script>
+  import { STATUS_CODES, search } from "./tool.ts";
+  import type { StatusCategory } from "./tool.ts";
+
+  const query = document.querySelector<HTMLInputElement>("[data-query]")!;
+  const chips = document.querySelector<HTMLElement>("[data-chips]")!;
+  const results = document.querySelector<HTMLElement>("[data-results]")!;
+  const empty = document.querySelector<HTMLElement>("[data-empty]")!;
+
+  let activeCat: string = "all";
+
+  function render() {
+    const matched = query.value.trim() ? search(query.value) : STATUS_CODES;
+    const filtered = activeCat === "all" ? matched : matched.filter((s) => s.category === activeCat);
+
+    results.innerHTML = "";
+    empty.style.display = "none";
+    if (filtered.length === 0) {
+      empty.textContent = "No status codes match that search.";
+      empty.style.display = "block";
+      return;
+    }
+
+    for (const s of filtered) {
+      const card = document.createElement("div");
+      card.className = "card";
+
+      const top = document.createElement("div");
+      top.className = "card-top";
+      const code = document.createElement("span");
+      code.className = "card-name";
+      code.style.fontSize = "1.15rem";
+      code.textContent = String(s.code);
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.textContent = s.category;
+      top.append(code, badge);
+
+      const name = document.createElement("div");
+      name.style.fontWeight = "600";
+      name.textContent = s.name;
+
+      const meaning = document.createElement("div");
+      meaning.className = "muted";
+      meaning.style.fontSize = "0.88rem";
+      meaning.textContent = s.meaning;
+
+      card.append(top, name, meaning);
+      results.appendChild(card);
+    }
+  }
+
+  chips.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-cat]");
+    if (!btn) return;
+    activeCat = btn.dataset.cat ?? "all";
+    for (const chip of chips.querySelectorAll<HTMLButtonElement>("[data-cat]")) {
+      chip.classList.toggle("btn-primary", chip.dataset.cat === activeCat);
+    }
+    render();
+  });
+
+  query.addEventListener("input", render);
+
+  render();
+</script>

@@ -1,0 +1,77 @@
+---
+// mr chmod — convert octal and symbolic permission modes.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));">
+    <label class="field">
+      <span class="field-label">Octal (e.g. 755 or 4755)</span>
+      <input class="input mono" type="text" placeholder="755" value="755" data-octal />
+    </label>
+    <label class="field">
+      <span class="field-label">Symbolic (e.g. rwxr-xr-x)</span>
+      <input class="input mono" type="text" placeholder="rwxr-xr-x" data-symbolic />
+    </label>
+  </div>
+
+  <output class="error-text" data-error aria-live="polite"></output>
+
+  <p class="muted" style="font-size: 0.85rem; margin-top: 1rem;">
+    The optional first octal digit combines special bits: 4 = setuid, 2 = setgid, 1 = sticky.
+    Special bits render in the execute position: lowercase s/t when execute is set, uppercase
+    S/T when it is not. A leading file-type character (like "-" or "d") is accepted and ignored.
+  </p>
+</section>
+
+<script>
+  import { octalToSymbolic, symbolicToOctal } from "./tool.ts";
+
+  const octalEl = document.querySelector<HTMLInputElement>("[data-octal]");
+  const symbolicEl = document.querySelector<HTMLInputElement>("[data-symbolic]");
+  const errorEl = document.querySelector<HTMLOutputElement>("[data-error]");
+
+  if (!octalEl || !symbolicEl || !errorEl) {
+    throw new Error("mr chmod mount failed");
+  }
+
+  let updating = false;
+
+  function fromOctal() {
+    if (updating) return;
+    updating = true;
+    errorEl.textContent = "";
+    const v = octalEl.value.trim();
+    if (v === "") {
+      symbolicEl.value = "";
+    } else {
+      try {
+        symbolicEl.value = octalToSymbolic(v);
+      } catch (err) {
+        symbolicEl.value = "";
+        errorEl.textContent = err instanceof Error ? err.message : "Invalid octal mode";
+      }
+    }
+    updating = false;
+  }
+
+  function fromSymbolic() {
+    if (updating) return;
+    updating = true;
+    errorEl.textContent = "";
+    const v = symbolicEl.value.trim();
+    if (v === "") {
+      octalEl.value = "";
+    } else {
+      try {
+        octalEl.value = symbolicToOctal(v);
+      } catch (err) {
+        octalEl.value = "";
+        errorEl.textContent = err instanceof Error ? err.message : "Invalid symbolic mode";
+      }
+    }
+    updating = false;
+  }
+
+  octalEl.addEventListener("input", fromOctal);
+  symbolicEl.addEventListener("input", fromSymbolic);
+  fromOctal();
+</script>

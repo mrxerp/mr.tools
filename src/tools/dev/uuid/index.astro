@@ -1,0 +1,69 @@
+---
+// mr.uuid — generate UUID v4 and v7 identifiers.
+---
+<section class="stage">
+  <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+    <label class="field">
+      <span class="field-label">Count</span>
+      <input class="input" type="number" min="1" max="50" value="1" data-count />
+    </label>
+    <label class="field">
+      <span class="field-label">Version</span>
+      <select class="input" data-version>
+        <option value="4">v4 (random)</option>
+        <option value="7">v7 (time-ordered)</option>
+      </select>
+    </label>
+    <label class="field" style="display: inline-flex; align-items: flex-end; padding-bottom: 0.6rem;">
+      <span style="display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+        <input type="checkbox" data-uppercase /> Uppercase
+      </span>
+    </label>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-generate>Generate</button>
+    <button class="btn" type="button" data-copy>Copy all</button>
+  </div>
+
+  <output class="output-box" data-out aria-live="polite"></output>
+</section>
+
+<script>
+  import { generateUuid } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const countEl = document.querySelector<HTMLInputElement>("[data-count]")!;
+  const versionEl = document.querySelector<HTMLSelectElement>("[data-version]")!;
+  const upperEl = document.querySelector<HTMLInputElement>("[data-uppercase]")!;
+  const generateBtn = document.querySelector<HTMLButtonElement>("[data-generate]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
+  if (!countEl || !versionEl || !upperEl || !generateBtn || !copyBtn || !out) {
+    throw new Error("mr uuid mount failed");
+  }
+
+  let current: string[] = [];
+
+  function render() {
+    const count = Math.min(50, Math.max(1, Number(countEl.value) || 1));
+    const version = Number(versionEl.value) as 4 | 7;
+    const uppercase = upperEl.checked;
+    current = Array.from({ length: count }, () => generateUuid(version, uppercase));
+    out.innerHTML = "";
+    for (const id of current) {
+      const line = document.createElement("div");
+      line.textContent = id;
+      line.style.fontFamily = "var(--mono)";
+      out.appendChild(line);
+    }
+  }
+
+  generateBtn.addEventListener("click", render);
+  countEl.addEventListener("input", render);
+  versionEl.addEventListener("change", render);
+  upperEl.addEventListener("change", render);
+  copyBtn.addEventListener("click", () => copyTextWithFeedback(current.join("\n"), copyBtn));
+
+  render();
+</script>

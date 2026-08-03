@@ -1,0 +1,111 @@
+---
+// mr percent — four percentage calculators, all live.
+---
+<section class="stage">
+  <div class="grid">
+    <div class="field">
+      <span class="field-label">What percent is X of Y?</span>
+      <div style="display: flex; gap: 0.5rem;">
+        <input class="input mono" type="number" data-of-part placeholder="part" />
+        <input class="input mono" type="number" data-of-whole placeholder="whole" />
+      </div>
+      <output class="output-box" style="margin: 0.5rem 0 0;" data-of-out></output>
+    </div>
+
+    <div class="field">
+      <span class="field-label">X% of Y is?</span>
+      <div style="display: flex; gap: 0.5rem;">
+        <input class="input mono" type="number" data-pct-value placeholder="percent" />
+        <input class="input mono" type="number" data-pct-base placeholder="base" />
+      </div>
+      <output class="output-box" style="margin: 0.5rem 0 0;" data-pct-out></output>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Percent change from A to B</span>
+      <div style="display: flex; gap: 0.5rem;">
+        <input class="input mono" type="number" data-ch-from placeholder="from" />
+        <input class="input mono" type="number" data-ch-to placeholder="to" />
+      </div>
+      <output class="output-box" style="margin: 0.5rem 0 0;" data-ch-out></output>
+    </div>
+
+    <div class="field">
+      <span class="field-label">Percent change needed to hit target</span>
+      <div style="display: flex; gap: 0.5rem;">
+        <input class="input mono" type="number" data-tr-cur placeholder="current" />
+        <input class="input mono" type="number" data-tr-target placeholder="target" />
+      </div>
+      <output class="output-box" style="margin: 0.5rem 0 0;" data-tr-out></output>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { percentageOf, valueOf, change, percentToReach } from "./tool.ts";
+
+  function q<T extends Element>(sel: string): T {
+    const el = document.querySelector<T>(sel);
+    if (!el) throw new Error("mr percent mount failed");
+    return el;
+  }
+
+  interface Card {
+    inputs: HTMLInputElement[];
+    out: HTMLOutputElement;
+    fn: (values: number[]) => number;
+  }
+
+  const cards: Card[] = [
+    {
+      inputs: [q("[data-of-part]"), q("[data-of-whole]")],
+      out: q("[data-of-out]"),
+      fn: (v) => percentageOf(v[0], v[1]),
+    },
+    {
+      inputs: [q("[data-pct-value]"), q("[data-pct-base]")],
+      out: q("[data-pct-out]"),
+      fn: (v) => valueOf(v[0], v[1]),
+    },
+    {
+      inputs: [q("[data-ch-from]"), q("[data-ch-to]")],
+      out: q("[data-ch-out]"),
+      fn: (v) => change(v[0], v[1]),
+    },
+    {
+      inputs: [q("[data-tr-cur]"), q("[data-tr-target]")],
+      out: q("[data-tr-out]"),
+      fn: (v) => percentToReach(v[0], v[1]),
+    },
+  ];
+
+  function readNum(el: HTMLInputElement): number | null {
+    const v = el.value.trim();
+    if (v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function renderCard(card: Card) {
+    const values: number[] = [];
+    for (const input of card.inputs) {
+      const n = readNum(input);
+      if (n === null) {
+        card.out.textContent = "";
+        return;
+      }
+      values.push(n);
+    }
+    try {
+      card.out.textContent = String(card.fn(values));
+    } catch (err) {
+      card.out.textContent = err instanceof Error ? err.message : "Error";
+    }
+  }
+
+  for (const card of cards) {
+    for (const input of card.inputs) {
+      input.addEventListener("input", () => renderCard(card));
+    }
+  }
+</script>

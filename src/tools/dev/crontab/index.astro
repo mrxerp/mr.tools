@@ -1,0 +1,122 @@
+---
+// mr crontab — build cron expressions and preview their next run times.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">Preset</span>
+    <select class="input" data-preset>
+      <option value="">Custom</option>
+      <option value="Every minute">Every minute</option>
+      <option value="Every 5 minutes">Every 5 minutes</option>
+      <option value="Hourly">Hourly</option>
+      <option value="Daily at 9am">Daily at 9am</option>
+      <option value="Weekly Monday 9am">Weekly Monday 9am</option>
+      <option value="Monthly on 1st">Monthly on 1st</option>
+    </select>
+  </div>
+
+  <div class="grid" style="grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));">
+    <label class="field">
+      <span class="field-label">Minute</span>
+      <input class="input mono" data-field="minute" placeholder="*" />
+    </label>
+    <label class="field">
+      <span class="field-label">Hour</span>
+      <input class="input mono" data-field="hour" placeholder="*" />
+    </label>
+    <label class="field">
+      <span class="field-label">Day of month</span>
+      <input class="input mono" data-field="dom" placeholder="*" />
+    </label>
+    <label class="field">
+      <span class="field-label">Month</span>
+      <input class="input mono" data-field="month" placeholder="*" />
+    </label>
+    <label class="field">
+      <span class="field-label">Day of week</span>
+      <input class="input mono" data-field="dow" placeholder="*" />
+    </label>
+  </div>
+
+  <label class="field">
+    <span class="field-label">Full expression</span>
+    <input class="input mono" type="text" placeholder="min hour dom month dow" value="* * * * *" data-expr />
+  </label>
+
+  <div class="field">
+    <span class="field-label">Next 5 runs (your local time)</span>
+    <output class="output-box" data-runs aria-live="polite"></output>
+  </div>
+  <output class="error-text" data-error aria-live="polite"></output>
+</section>
+
+<script>
+  import { nextRuns, PRESETS } from "./tool.ts";
+
+  const presetEl = document.querySelector<HTMLSelectElement>("[data-preset]");
+  const exprEl = document.querySelector<HTMLInputElement>("[data-expr]");
+  const runsEl = document.querySelector<HTMLOutputElement>("[data-runs]");
+  const errorEl = document.querySelector<HTMLOutputElement>("[data-error]");
+  const fieldEls: Record<string, HTMLInputElement> = {};
+  document.querySelectorAll<HTMLInputElement>("[data-field]").forEach((el) => {
+    fieldEls[el.dataset.field ?? ""] = el;
+  });
+
+  if (!presetEl || !exprEl || !runsEl || !errorEl || Object.keys(fieldEls).length !== 5) {
+    throw new Error("mr crontab mount failed");
+  }
+
+  const FIELD_KEYS = ["minute", "hour", "dom", "month", "dow"];
+
+  function render() {
+    const expr = exprEl.value.trim();
+    errorEl.textContent = "";
+    const parts = expr.split(/\s+/);
+    if (parts.length === 5) {
+      for (let i = 0; i < FIELD_KEYS.length; i++) {
+        fieldEls[FIELD_KEYS[i]].value = parts[i];
+      }
+    }
+    runsEl.innerHTML = "";
+    if (!expr) {
+      const hint = document.createElement("div");
+      hint.className = "muted";
+      hint.textContent = "Type an expression or pick a preset to see future run times.";
+      runsEl.appendChild(hint);
+      return;
+    }
+    try {
+      const runs = nextRuns(expr, new Date(), 5);
+      for (const d of runs) {
+        const row = document.createElement("div");
+        row.textContent = d.toLocaleString();
+        runsEl.appendChild(row);
+      }
+    } catch (err) {
+      errorEl.textContent = err instanceof Error ? err.message : "Invalid expression";
+    }
+  }
+
+  presetEl.addEventListener("change", () => {
+    const preset = presetEl.value;
+    if (preset && preset in PRESETS) {
+      exprEl.value = PRESETS[preset];
+      render();
+    }
+  });
+
+  exprEl.addEventListener("input", () => {
+    presetEl.value = "";
+    render();
+  });
+
+  for (const key of FIELD_KEYS) {
+    fieldEls[key].addEventListener("input", () => {
+      presetEl.value = "";
+      exprEl.value = FIELD_KEYS.map((k) => fieldEls[k].value.trim() || "*").join(" ");
+      render();
+    });
+  }
+
+  render();
+</script>

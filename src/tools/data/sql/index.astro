@@ -1,0 +1,83 @@
+---
+// mr.sql — Format and beautify SQL queries.
+---
+<section class="stage">
+  <div class="field">
+    <span class="field-label">SQL Input</span>
+    <textarea class="input" rows="10" placeholder="Paste SQL here…" data-input></textarea>
+  </div>
+  <div class="actions" style="margin-top:0.5rem">
+    <select class="input" data-language style="width:auto;max-width:180px">
+      <option value="sql">Generic SQL</option>
+      <option value="mysql">MySQL</option>
+      <option value="postgresql">PostgreSQL</option>
+      <option value="sqlite">SQLite</option>
+    </select>
+    <select class="input" data-keyword-case style="width:auto;max-width:150px">
+      <option value="upper">UPPERCASE</option>
+      <option value="lower">lowercase</option>
+      <option value="preserve">Preserve</option>
+    </select>
+    <select class="input" data-indent style="width:auto;max-width:150px">
+      <option value="  ">2 spaces</option>
+      <option value="    ">4 spaces</option>
+      <option value="	">Tabs</option>
+    </select>
+  </div>
+  <div class="actions">
+    <button class="btn btn-primary" data-format>Format</button>
+    <button class="btn" data-copy>Copy</button>
+  </div>
+  <span class="field-label" style="margin-top:1rem">Formatted Output</span>
+  <pre class="output-box" data-output aria-live="polite"></pre>
+  <div class="error-text" data-error style="display:none;margin-top:0.5rem"></div>
+</section>
+
+<style>
+  select.input { font-size: 0.85rem; }
+</style>
+
+<script>
+  import { formatSql } from "./tool.ts";
+  import { copyTextWithFeedback } from "@/lib/clipboard";
+
+  const input = document.querySelector<HTMLTextAreaElement>("[data-input]")!;
+  const language = document.querySelector<HTMLSelectElement>("[data-language]")!;
+  const keywordCase = document.querySelector<HTMLSelectElement>("[data-keyword-case]")!;
+  const indent = document.querySelector<HTMLSelectElement>("[data-indent]")!;
+  const output = document.querySelector<HTMLElement>("[data-output]")!;
+  const errorEl = document.querySelector<HTMLElement>("[data-error]")!;
+  const formatBtn = document.querySelector<HTMLButtonElement>("[data-format]")!;
+  const copyBtn = document.querySelector<HTMLButtonElement>("[data-copy]")!;
+
+  let lastResult = "";
+
+  function run() {
+    errorEl.style.display = "none";
+    try {
+      lastResult = formatSql(input.value, {
+        language: language.value as "sql" | "mysql" | "postgresql" | "sqlite",
+        keywordCase: keywordCase.value as "upper" | "lower" | "preserve",
+        indent: indent.value,
+      });
+      output.textContent = lastResult;
+    } catch (err) {
+      output.textContent = "";
+      errorEl.textContent = err instanceof Error ? err.message : "Could not parse SQL";
+      errorEl.style.display = "block";
+    }
+  }
+
+  let debounce: number;
+  input.addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = window.setTimeout(run, 300);
+  });
+  language.addEventListener("change", run);
+  keywordCase.addEventListener("change", run);
+  indent.addEventListener("change", run);
+  formatBtn.addEventListener("click", run);
+  copyBtn.addEventListener("click", () => copyTextWithFeedback(lastResult, copyBtn));
+
+  run();
+</script>

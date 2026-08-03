@@ -1,0 +1,132 @@
+---
+// mr.jwt — decode and inspect JWT headers, payloads, and signatures.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Token</span>
+    <textarea class="input" rows="5" placeholder="eyJhbGciOiJIUzI1NiIs…" data-token></textarea>
+  </label>
+  <label class="field">
+    <span class="field-label">Secret (optional, for HS256 verification)</span>
+    <input class="input" type="password" placeholder="Shared secret…" data-secret />
+  </label>
+  <div class="actions">
+    <button class="btn btn-primary" type="button" data-decode>Decode</button>
+    <button class="btn" type="button" data-verify>Verify Signature</button>
+    <span class="badge" data-verdict style="display: none;"></span>
+  </div>
+
+  <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));" data-parts>
+    <div class="field">
+      <span class="field-label">Header</span>
+      <output class="output-box" data-header></output>
+    </div>
+    <div class="field">
+      <span class="field-label">Payload</span>
+      <output class="output-box" data-payload></output>
+    </div>
+  </div>
+
+  <div class="field">
+    <span class="field-label">Algorithm: <span class="muted" data-alg></span></span>
+  </div>
+  <div class="field" data-expiry style="display: none;">
+    <span class="field-label">Expiry</span>
+    <div data-expiry-body></div>
+  </div>
+
+  <output class="output-box error-text" data-error style="display: none;"></output>
+</section>
+
+<script>
+  import { decodeJwt, verifyHs256, expiryInfo } from "./tool.ts";
+
+  const tokenEl = document.querySelector<HTMLTextAreaElement>("[data-token]")!;
+  const secretEl = document.querySelector<HTMLInputElement>("[data-secret]")!;
+  const decodeBtn = document.querySelector<HTMLButtonElement>("[data-decode]")!;
+  const verifyBtn = document.querySelector<HTMLButtonElement>("[data-verify]")!;
+  const verdictEl = document.querySelector<HTMLSpanElement>("[data-verdict]")!;
+  const headerOut = document.querySelector<HTMLOutputElement>("[data-header]")!;
+  const payloadOut = document.querySelector<HTMLOutputElement>("[data-payload]")!;
+  const algEl = document.querySelector<HTMLSpanElement>("[data-alg]")!;
+  const expiryEl = document.querySelector<HTMLDivElement>("[data-expiry]")!;
+  const expiryBody = document.querySelector<HTMLDivElement>("[data-expiry-body]")!;
+  const errorEl = document.querySelector<HTMLOutputElement>("[data-error]")!;
+  if (!tokenEl || !secretEl || !decodeBtn || !verifyBtn || !verdictEl || !headerOut || !payloadOut || !algEl || !expiryEl || !expiryBody || !errorEl) {
+    throw new Error("mr jwt mount failed");
+  }
+
+  function showError(msg: string) {
+    errorEl.textContent = msg;
+    errorEl.style.display = "block";
+  }
+
+  function clearError() {
+    errorEl.textContent = "";
+    errorEl.style.display = "none";
+  }
+
+  function render() {
+    clearError();
+    verdictEl.style.display = "none";
+    headerOut.textContent = "";
+    payloadOut.textContent = "";
+    algEl.textContent = "";
+    expiryEl.style.display = "none";
+    expiryBody.textContent = "";
+    if (!tokenEl.value.trim()) return;
+    try {
+      const { header, payload } = decodeJwt(tokenEl.value.trim());
+      headerOut.textContent = JSON.stringify(header, null, 2);
+      payloadOut.textContent = JSON.stringify(payload, null, 2);
+      algEl.textContent = typeof header.alg === "string" ? header.alg : "unknown";
+
+      const info = expiryInfo(payload);
+      if (info.exp || info.iat || info.nbf) {
+        expiryEl.style.display = "block";
+        const rows: Array<[string, string]> = [];
+        if (info.exp) rows.push(["expires", info.exp]);
+        if (info.iat) rows.push(["issued", info.iat]);
+        if (info.nbf) rows.push(["not before", info.nbf]);
+        if (rows.length > 0) {
+          const verdict = document.createElement("span");
+          verdict.className = info.expired ? "badge" : "badge badge-ok";
+          verdict.textContent = info.expired ? "Expired" : "Valid";
+          const list = document.createElement("div");
+          for (const [label, iso] of rows) {
+            const line = document.createElement("div");
+            line.textContent = `${label}: ${iso}`;
+            list.appendChild(line);
+          }
+          expiryBody.append(verdict, list);
+        }
+      }
+    } catch (err) {
+      showError(err instanceof Error ? err.message : "Could not decode token");
+    }
+  }
+
+  verifyBtn.addEventListener("click", async () => {
+    clearError();
+    try {
+      const ok = await verifyHs256(tokenEl.value.trim(), secretEl.value);
+      verdictEl.textContent = !secretEl.value
+        ? "Secret required"
+        : ok
+          ? "Signature OK"
+          : "Signature invalid";
+      verdictEl.className = ok ? "badge badge-ok" : "badge";
+      verdictEl.style.display = "inline-block";
+    } catch (err) {
+      verdictEl.style.display = "none";
+      showError(err instanceof Error ? err.message : "Could not verify signature");
+    }
+  });
+
+  decodeBtn.addEventListener("click", render);
+  let debounce: number;
+  tokenEl.addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = window.setTimeout(render, 300);
+  });
+</script>

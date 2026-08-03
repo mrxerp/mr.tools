@@ -1,0 +1,70 @@
+---
+// mr.base — convert numbers between bases 2 and 36.
+---
+<section class="stage">
+  <label class="field">
+    <span class="field-label">Value</span>
+    <input class="input" type="text" placeholder="255, ff, 11111111…" data-value />
+  </label>
+  <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
+    <label class="field">
+      <span class="field-label">From base</span>
+      <input class="input" type="number" min="2" max="36" value="10" data-from />
+    </label>
+    <label class="field">
+      <span class="field-label">To base</span>
+      <input class="input" type="number" min="2" max="36" value="16" data-to />
+    </label>
+  </div>
+  <div class="actions">
+    <button class="btn" type="button" data-swap>Swap</button>
+  </div>
+  <label class="field">
+    <span class="field-label">Result</span>
+    <output class="output-box" data-out aria-live="polite"></output>
+  </label>
+  <output class="output-box error-text" data-error style="display: none;"></output>
+</section>
+
+<script>
+  import { convertBase } from "./tool.ts";
+
+  const valueEl = document.querySelector<HTMLInputElement>("[data-value]")!;
+  const fromEl = document.querySelector<HTMLInputElement>("[data-from]")!;
+  const toEl = document.querySelector<HTMLInputElement>("[data-to]")!;
+  const swapBtn = document.querySelector<HTMLButtonElement>("[data-swap]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
+  const errorEl = document.querySelector<HTMLOutputElement>("[data-error]")!;
+  if (!valueEl || !fromEl || !toEl || !swapBtn || !out || !errorEl) {
+    throw new Error("mr base mount failed");
+  }
+
+  function render() {
+    errorEl.style.display = "none";
+    out.textContent = "";
+    if (!valueEl.value.trim()) return;
+    try {
+      out.textContent = convertBase(
+        valueEl.value,
+        Number(fromEl.value),
+        Number(toEl.value),
+      );
+    } catch (err) {
+      errorEl.textContent = err instanceof Error ? err.message : "Invalid input";
+      errorEl.style.display = "block";
+    }
+  }
+
+  swapBtn.addEventListener("click", () => {
+    const tmp = fromEl.value;
+    fromEl.value = toEl.value;
+    toEl.value = tmp;
+    render();
+  });
+
+  for (const el of [valueEl, fromEl, toEl]) {
+    el.addEventListener("input", render);
+  }
+
+  render();
+</script>
