@@ -12,7 +12,7 @@ interface Props {
 const { title, description, path = "/" } = Astro.props;
 const site = new URL(Astro.site ?? "https://mr.tools");
 const canonical = new URL(path, site);
-const pageTitle = path === "/" ? title : `${title} — mr.tools`;
+const pageTitle = title;
 ---
 <!doctype html>
 <html lang="en">

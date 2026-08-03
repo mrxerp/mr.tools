@@ -15,11 +15,11 @@
       <button class="button button--secondary" data-next type="button">▶</button>
     </span>
   </div>
-  <div class="streak-grid" data-grid role="grid" aria-label="habit calendar"></div>
   <div class="weekdays">
     <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span>
     <span>Thu</span><span>Fri</span><span>Sat</span>
   </div>
+  <div class="streak-grid" data-grid role="grid" aria-label="habit calendar"></div>
 
   <div class="stats">
     <div class="stat"><span class="stat-label">Current streak</span><strong data-cur>0</strong></div>
@@ -53,7 +53,7 @@
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     gap: 0.25rem;
-    margin-block: 1.2rem 0;
+    margin-block: 0.2rem 0;
   }
   .weekdays {
     display: grid;
@@ -75,6 +75,10 @@
   }
   .streak-day:hover {
     border-color: var(--accent);
+  }
+  .streak-day:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
   .streak-day.on {
     background: var(--accent);
@@ -152,6 +156,10 @@
       btn.className = "streak-day";
       btn.classList.toggle("on", cell.marked);
       if (iso === today) btn.title = "Today";
+      if (iso > today) {
+        btn.disabled = true;
+        btn.title = "Future days can't be tracked";
+      }
       btn.textContent = String(cell.day);
       btn.addEventListener("click", () => {
         if (cell.marked) dates.delete(iso);
