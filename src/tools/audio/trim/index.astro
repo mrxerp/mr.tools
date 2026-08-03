@@ -36,6 +36,7 @@
       </label>
     </div>
     <div class="actions">
+      <button class="btn" type="button" data-play disabled>Play</button>
       <button class="btn btn-primary" type="button" data-export disabled>Export WAV</button>
       <span class="muted" data-duration></span>
     </div>
@@ -70,6 +71,7 @@
   const fadeInEl = document.querySelector<HTMLInputElement>("[data-fadein]")!;
   const fadeOutEl = document.querySelector<HTMLInputElement>("[data-fadeout]")!;
   const exportBtn = document.querySelector<HTMLButtonElement>("[data-export]")!;
+  const playBtn = document.querySelector<HTMLButtonElement>("[data-play]")!;
   const durationEl = document.querySelector<HTMLSpanElement>("[data-duration]")!;
   const errorEl = document.querySelector<HTMLParagraphElement>("[data-error]")!;
 
@@ -159,14 +161,20 @@
       ? `Removed ${formatDuration(end - start)} — output ${formatDuration(outDur)} of ${formatDuration(buffer.duration)}`
       : `Kept ${formatDuration(outDur)} of ${formatDuration(buffer.duration)}`;
     exportBtn.disabled = outDur <= 0;
+    playBtn.disabled = outDur <= 0;
     clampFades(outDur);
     drawWaveform();
   }
 
   function outputDur(): number {
     if (!buffer) return 0;
+    return segments().reduce((acc, s) => acc + s.dur, 0);
+  }
+
+  function segments(): CutSegment[] {
+    if (!buffer) return [];
     const { start, end } = selection();
-    return cutSegments(buffer.duration, start, end, removeMode()).reduce((acc, s) => acc + s.dur, 0);
+    return cutSegments(buffer.duration, start, end, removeMode());
   }
 
   function clampFades(dur: number) {
@@ -189,6 +197,7 @@
   async function load(file: File) {
     setError("");
     if (working) return;
+    stopPlayback();
     working = true;
     try {
       const ctx = new AudioContext();
@@ -228,8 +237,7 @@
     if (!buffer) return;
     exportBtn.disabled = true;
     try {
-      const { start, end } = selection();
-      const segs = cutSegments(buffer.duration, start, end, removeMode());
+      const segs = segments();
       if (segs.length === 0) {
         setError("Selection covers the whole file — nothing to keep. Adjust the mode or sliders.");
         return;
@@ -271,10 +279,59 @@
     }
   }
 
+  let playCtx: AudioContext | null = null;
+  let playNodes: AudioBufferSourceNode[] = [];
+  let playTimer = 0;
+
+  function stopPlayback() {
+    for (const n of playNodes) n.stop();
+    playNodes = [];
+    if (playCtx) void playCtx.close();
+    playCtx = null;
+    window.clearTimeout(playTimer);
+    playBtn.textContent = "Play";
+  }
+
+  function togglePlay() {
+    if (playCtx) {
+      stopPlayback();
+      return;
+    }
+    const segs = segments();
+    const outDur = segs.reduce((acc, s) => acc + s.dur, 0);
+    if (!buffer || segs.length === 0 || outDur <= 0) return;
+    const ctx = new AudioContext();
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    const t0 = ctx.currentTime + 0.05;
+    const fi = Math.min(Number(fadeInEl.value) || 0, outDur / 2);
+    const fo = Math.min(Number(fadeOutEl.value) || 0, outDur / 2);
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(1, t0 + fi);
+    gain.gain.setValueAtTime(1, t0 + outDur - fo);
+    gain.gain.linearRampToValueAtTime(0, t0 + outDur);
+    const nodes: AudioBufferSourceNode[] = [];
+    for (const s of segs) {
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(gain);
+      src.start(t0 + s.offset, s.start, s.dur);
+      nodes.push(src);
+    }
+    playCtx = ctx;
+    playNodes = nodes;
+    playBtn.textContent = "Stop";
+    window.clearTimeout(playTimer);
+    playTimer = window.setTimeout(() => {
+      if (playCtx === ctx) stopPlayback();
+    }, Math.ceil((outDur + 0.3) * 1000));
+  }
+
   startEl.addEventListener("input", refresh);
   endEl.addEventListener("input", refresh);
   fadeInEl.addEventListener("input", refresh);
   fadeOutEl.addEventListener("input", refresh);
   modeSel.addEventListener("change", refresh);
+  playBtn.addEventListener("click", togglePlay);
   exportBtn.addEventListener("click", exportWav);
 </script>
