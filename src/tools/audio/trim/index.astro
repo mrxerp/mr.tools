@@ -68,6 +68,7 @@
   const css = getComputedStyle(document.documentElement);
   const COLOR_SOFT = css.getPropertyValue("--accent-soft").trim() || "#ececfc";
   const COLOR_ACCENT = css.getPropertyValue("--accent").trim() || "#5a5bd9";
+  const DIM_OVERLAY = "rgba(255, 255, 255, 0.6)";
 
   let buffer: AudioBuffer | null = null;
   let peaks: Uint8Array = new Uint8Array(0);
@@ -117,8 +118,6 @@
     const { start, end } = selection();
     const selW = ((end - start) / buffer.duration) * w;
     const selX = (start / buffer.duration) * w;
-    ctx2d.fillStyle = COLOR_SOFT;
-    ctx2d.fillRect(selX, 0, selW, h);
     const mid = h / 2;
     ctx2d.fillStyle = COLOR_ACCENT;
     for (let b = 0; b < peaks.length; b++) {
@@ -127,6 +126,11 @@
       const amp = (peaks[b] / 255) * (h / 2 - 4);
       ctx2d.fillRect(x, mid - amp, barW, amp * 2);
     }
+    ctx2d.fillStyle = DIM_OVERLAY;
+    ctx2d.fillRect(0, 0, selX, h);
+    ctx2d.fillRect(selX + selW, 0, w - selX - selW, h);
+    ctx2d.fillStyle = COLOR_SOFT;
+    ctx2d.fillRect(selX, 0, selW, h);
   }
 
   function refresh() {
