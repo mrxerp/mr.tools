@@ -1,5 +1,5 @@
 import { strictEqual, deepStrictEqual, ok } from "node:assert";
-import { encodeWav, wavInfo, clampRange, samplePeaks, formatDuration } from "./tool.ts";
+import { encodeWav, wavInfo, clampRange, samplePeaks, formatDuration, cutSegments, outputDuration } from "./tool.ts";
 
 export async function runTest() {
   const rate = 8000;
@@ -30,4 +30,21 @@ export async function runTest() {
   strictEqual(formatDuration(1.234), "1.23s");
   strictEqual(formatDuration(0), "0.00s");
   ok(encodeWav(new Float32Array([2, -2]), rate, 1).byteLength === 48, "out-of-range samples clamp without corrupting size");
+
+  deepStrictEqual(cutSegments(15, 5, 11, false), [{ offset: 0, start: 5, dur: 6 }], "keep exports the selection");
+  deepStrictEqual(cutSegments(15, 5, 11, true), [
+    { offset: 0, start: 0, dur: 5 },
+    { offset: 5, start: 11, dur: 4 },
+  ], "remove concatenates head and tail");
+  deepStrictEqual(cutSegments(15, 0, 11, true), [{ offset: 0, start: 11, dur: 4 }], "remove from 0 keeps only the tail");
+  deepStrictEqual(cutSegments(15, 5, 15, true), [{ offset: 0, start: 0, dur: 5 }], "remove to end keeps only the head");
+  deepStrictEqual(cutSegments(15, 0, 15, true), [], "removing the whole file yields nothing");
+  deepStrictEqual(cutSegments(15, 5, 3, true), [
+    { offset: 0, start: 0, dur: 5 },
+    { offset: 5, start: 5, dur: 10 },
+  ], "inverted selection clamps then removes");
+
+  strictEqual(outputDuration(15, 5, 11, false), 6);
+  strictEqual(outputDuration(15, 5, 11, true), 9);
+  strictEqual(outputDuration(15, 0, 15, true), 0);
 }

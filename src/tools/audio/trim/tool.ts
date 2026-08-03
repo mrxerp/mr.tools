@@ -13,6 +13,38 @@ export function clampRange(
   return { start, end };
 }
 
+export interface CutSegment {
+  offset: number;
+  start: number;
+  dur: number;
+}
+
+/** Splits the clip into the pieces the output will keep.
+    keep: keep [start, end]; remove: keep [0, start] + [end, duration]. */
+export function cutSegments(
+  durationSec: number,
+  startSec: number,
+  endSec: number,
+  remove: boolean,
+): CutSegment[] {
+  const { start, end } = clampRange(durationSec, startSec, endSec);
+  if (!remove) return [{ offset: 0, start, dur: end - start }];
+  const segs: CutSegment[] = [];
+  if (start > 0) segs.push({ offset: 0, start: 0, dur: start });
+  const tail = durationSec - end;
+  if (tail > 0) segs.push({ offset: start, start: end, dur: tail });
+  return segs;
+}
+
+export function outputDuration(
+  durationSec: number,
+  startSec: number,
+  endSec: number,
+  remove: boolean,
+): number {
+  return cutSegments(durationSec, startSec, endSec, remove).reduce((acc, s) => acc + s.dur, 0);
+}
+
 /** Downsamples a mono signal into N peak values (0-255) for a waveform canvas. */
 export function samplePeaks(samples: Float32Array, buckets: number): Uint8Array {
   const out = new Uint8Array(Math.max(0, buckets));

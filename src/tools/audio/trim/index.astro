@@ -12,6 +12,13 @@
     <canvas data-wave width="900" height="160" style="width:100%;height:160px;display:block"></canvas>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
       <label class="field">
+        <span class="field-label">Mode</span>
+        <select class="input" data-mode>
+          <option value="keep">Keep selection</option>
+          <option value="remove">Remove selection</option>
+        </select>
+      </label>
+      <label class="field">
         <span class="field-label">Start: <span data-start-label>0.00s</span></span>
         <input class="input" type="range" min="0" max="1" step="0.001" value="0" data-start />
       </label>
@@ -46,7 +53,7 @@
 </style>
 
 <script>
-  import { clampRange, samplePeaks, formatDuration } from "./tool.ts";
+  import { clampRange, samplePeaks, formatDuration, cutSegments } from "./tool.ts";
   import { encodeWav } from "../_wav.ts";
   import { readFileAsArrayBuffer, swapExtension } from "@/lib/files";
   import { downloadBlob } from "@/lib/download";
@@ -55,6 +62,7 @@
   const fileInput = document.querySelector<HTMLInputElement>("[data-file]")!;
   const controls = document.querySelector<HTMLDivElement>("[data-controls]")!;
   const canvas = document.querySelector<HTMLCanvasElement>("[data-wave]")!;
+  const modeSel = document.querySelector<HTMLSelectElement>("[data-mode]")!;
   const startEl = document.querySelector<HTMLInputElement>("[data-start]")!;
   const endEl = document.querySelector<HTMLInputElement>("[data-end]")!;
   const startLabel = document.querySelector<HTMLSpanElement>("[data-start-label]")!;
@@ -68,7 +76,7 @@
   const css = getComputedStyle(document.documentElement);
   const COLOR_SOFT = css.getPropertyValue("--accent-soft").trim() || "#ececfc";
   const COLOR_ACCENT = css.getPropertyValue("--accent").trim() || "#5a5bd9";
-  const DIM_OVERLAY = "rgba(255, 255, 255, 0.6)";
+  const DIM_OVERLAY = "rgba(255, 255, 255, 0.35)";
 
   let buffer: AudioBuffer | null = null;
   let peaks: Uint8Array = new Uint8Array(0);
@@ -109,6 +117,10 @@
     return clampRange(buffer.duration, Number(startEl.value) * buffer.duration, Number(endEl.value) * buffer.duration);
   }
 
+  function removeMode() {
+    return modeSel.value === "remove";
+  }
+
   function drawWaveform() {
     const ctx2d = canvas.getContext("2d")!;
     const w = canvas.width;
@@ -127,21 +139,34 @@
       ctx2d.fillRect(x, mid - amp, barW, amp * 2);
     }
     ctx2d.fillStyle = DIM_OVERLAY;
-    ctx2d.fillRect(0, 0, selX, h);
-    ctx2d.fillRect(selX + selW, 0, w - selX - selW, h);
-    ctx2d.fillStyle = COLOR_SOFT;
-    ctx2d.fillRect(selX, 0, selW, h);
+    if (removeMode()) {
+      ctx2d.fillRect(selX, 0, selW, h);
+    } else {
+      ctx2d.fillRect(0, 0, selX, h);
+      ctx2d.fillRect(selX + selW, 0, w - selX - selW, h);
+      ctx2d.fillStyle = COLOR_SOFT;
+      ctx2d.fillRect(selX, 0, selW, h);
+    }
   }
 
   function refresh() {
     if (!buffer) return;
     const { start, end } = selection();
-    const dur = end - start;
+    const outDur = outputDur();
     startLabel.textContent = formatDuration(start);
     endLabel.textContent = formatDuration(end);
-    durationEl.textContent = `Trimmed length: ${formatDuration(dur)} of ${formatDuration(buffer.duration)}`;
-    clampFades(dur);
+    durationEl.textContent = removeMode()
+      ? `Removed ${formatDuration(end - start)} — output ${formatDuration(outDur)} of ${formatDuration(buffer.duration)}`
+      : `Kept ${formatDuration(outDur)} of ${formatDuration(buffer.duration)}`;
+    exportBtn.disabled = outDur <= 0;
+    clampFades(outDur);
     drawWaveform();
+  }
+
+  function outputDur(): number {
+    if (!buffer) return 0;
+    const { start, end } = selection();
+    return cutSegments(buffer.duration, start, end, removeMode()).reduce((acc, s) => acc + s.dur, 0);
   }
 
   function clampFades(dur: number) {
@@ -200,24 +225,32 @@
   }
 
   async function exportWav() {
-    if (!buffer || exportBtn.disabled) return;
+    if (!buffer) return;
     exportBtn.disabled = true;
     try {
       const { start, end } = selection();
-      const dur = end - start;
-      const off = new OfflineAudioContext(buffer.numberOfChannels, Math.round(dur * buffer.sampleRate), buffer.sampleRate);
-      const src = off.createBufferSource();
-      src.buffer = buffer;
+      const segs = cutSegments(buffer.duration, start, end, removeMode());
+      if (segs.length === 0) {
+        setError("Selection covers the whole file — nothing to keep. Adjust the mode or sliders.");
+        return;
+      }
+      const outDur = segs.reduce((acc, s) => acc + s.dur, 0);
+      const off = new OfflineAudioContext(buffer.numberOfChannels, Math.round(outDur * buffer.sampleRate), buffer.sampleRate);
       const gain = off.createGain();
       const t0 = off.currentTime;
-      const fi = Math.min(Number(fadeInEl.value) || 0, dur / 2);
-      const fo = Math.min(Number(fadeOutEl.value) || 0, dur / 2);
+      const fi = Math.min(Number(fadeInEl.value) || 0, outDur / 2);
+      const fo = Math.min(Number(fadeOutEl.value) || 0, outDur / 2);
       gain.gain.setValueAtTime(0, t0);
       gain.gain.linearRampToValueAtTime(1, t0 + fi);
-      gain.gain.setValueAtTime(1, t0 + dur - fo);
-      gain.gain.linearRampToValueAtTime(0, t0 + dur);
-      src.connect(gain).connect(off.destination);
-      src.start(t0, start, dur);
+      gain.gain.setValueAtTime(1, t0 + outDur - fo);
+      gain.gain.linearRampToValueAtTime(0, t0 + outDur);
+      gain.connect(off.destination);
+      for (const s of segs) {
+        const seg = off.createBufferSource();
+        seg.buffer = buffer;
+        seg.connect(gain);
+        seg.start(t0 + s.offset, s.start, s.dur);
+      }
       const rendered = await off.startRendering();
       const ch = rendered.numberOfChannels;
       const interleaved = new Float32Array(rendered.length * ch);
@@ -234,7 +267,7 @@
     } catch {
       setError("Rendering failed for that clip — try a shorter selection.");
     } finally {
-      exportBtn.disabled = false;
+      exportBtn.disabled = outputDur() <= 0;
     }
   }
 
@@ -242,5 +275,6 @@
   endEl.addEventListener("input", refresh);
   fadeInEl.addEventListener("input", refresh);
   fadeOutEl.addEventListener("input", refresh);
+  modeSel.addEventListener("change", refresh);
   exportBtn.addEventListener("click", exportWav);
 </script>
