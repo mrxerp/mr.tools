@@ -2,9 +2,28 @@
 // mr.shift — timesheet: hours + pay per day, exported to CSV.
 ---
 <section class="stage">
-  <div class="field">
-    <span class="field-label">Hourly rate</span>
-    <input class="input" type="number" min="0" step="0.5" placeholder="20.00" data-rate style="max-width:12rem" />
+  <div class="shift-setup">
+    <div class="field">
+      <span class="field-label">Hourly rate</span>
+      <input class="input" type="number" min="0" step="0.5" placeholder="20.00" data-rate style="max-width:12rem" />
+    </div>
+    <div class="field">
+      <span class="field-label">Currency</span>
+      <select class="input" data-currency style="max-width:6rem">
+        <option value="$" selected>$</option>
+        <option value="€">€</option>
+        <option value="£">£</option>
+        <option value="¥">¥</option>
+        <option value="₹">₹</option>
+      </select>
+    </div>
+  </div>
+  <div class="shift-head">
+    <span>Date</span>
+    <span>Start</span>
+    <span>End</span>
+    <span>Break (min)</span>
+    <span></span>
   </div>
   <div class="shift-rows" data-rows></div>
   <div class="actions">
@@ -15,7 +34,21 @@
   <output class="output-box" data-out aria-live="polite"></output>
 </section>
 
-<style>
+<style is:global>
+  .shift-setup {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+  .shift-head {
+    display: grid;
+    grid-template-columns: 1fr 5.5rem 5.5rem 5.5rem 2rem;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+    color: var(--faint);
+    margin-top: 1rem;
+  }
   .shift-row {
     display: grid;
     grid-template-columns: 1fr 5.5rem 5.5rem 5.5rem 2rem;
@@ -45,12 +78,13 @@
   import { computeShift, toCsv, type ShiftEntry } from "./tool.ts";
 
   const rateEl = document.querySelector<HTMLInputElement>("[data-rate]")!;
+  const currencyEl = document.querySelector<HTMLSelectElement>("[data-currency]")!;
   const rowsEl = document.querySelector<HTMLDivElement>("[data-rows]")!;
   const addBtn = document.querySelector<HTMLButtonElement>("[data-add]")!;
   const clearBtn = document.querySelector<HTMLButtonElement>("[data-clear]")!;
   const exportBtn = document.querySelector<HTMLButtonElement>("[data-export]")!;
   const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
-  if (!rateEl || !rowsEl || !addBtn || !clearBtn || !exportBtn || !out) throw new Error("mr.shift mount failed");
+  if (!rateEl || !currencyEl || !rowsEl || !addBtn || !clearBtn || !exportBtn || !out) throw new Error("mr.shift mount failed");
 
   const STORAGE_KEY = "mr-shift-entries-v1";
 
@@ -164,7 +198,7 @@
       totalPay += t.pay;
       dayCount++;
       const overnight = t.overnight ? " (overnight)" : "";
-      sum.textContent = `${(t.minutes / 60).toFixed(2)} h${overnight}${rate() ? ` · $${t.pay.toFixed(2)}` : ""}`;
+      sum.textContent = `${(t.minutes / 60).toFixed(2)} h${overnight}${rate() ? ` · ${cur()}${t.pay.toFixed(2)}` : ""}`;
     }
     out.innerHTML = "";
     if (!dayCount) {
@@ -172,11 +206,11 @@
       return;
     }
     const el = document.createElement("div");
-    const rateText = rate() ? ` at $${rate().toFixed(2)}/h` : "";
+    const rateText = rate() ? ` at ${cur()}${rate().toFixed(2)}/h` : "";
     el.textContent =
       `${dayCount} day${dayCount === 1 ? "" : "s"} · ` +
       `${(totalMinutes / 60).toFixed(2)} hours total${rateText} · ` +
-      `pay $${totalPay.toFixed(2)}`;
+      `pay ${cur()}${totalPay.toFixed(2)}`;
     out.appendChild(el);
   }
 
@@ -184,7 +218,12 @@
     return Math.max(0, Number(rateEl.value) || 0);
   }
 
+  function cur(): string {
+    return currencyEl.value || "$";
+  }
+
   rateEl.addEventListener("input", render);
+  currencyEl.addEventListener("change", render);
 
   addBtn.addEventListener("click", () => {
     addRow();
