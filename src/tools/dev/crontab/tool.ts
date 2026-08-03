@@ -15,14 +15,6 @@ export const PRESETS: Record<string, string> = {
   "Monthly on 1st": "0 0 1 * *",
 };
 
-const FIELD_RANGES: Array<[string, number, number]> = [
-  ["minute", 0, 59],
-  ["hour", 0, 23],
-  ["day-of-month", 1, 31],
-  ["month", 1, 12],
-  ["day-of-week", 0, 7],
-];
-
 function parseField(field: string, name: string, min: number, max: number): Set<number> {
   const values = new Set<number>();
   for (const part of field.split(",")) {

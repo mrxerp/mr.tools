@@ -25,9 +25,9 @@
 <script>
   import { octalToSymbolic, symbolicToOctal } from "./tool.ts";
 
-  const octalEl = document.querySelector<HTMLInputElement>("[data-octal]");
-  const symbolicEl = document.querySelector<HTMLInputElement>("[data-symbolic]");
-  const errorEl = document.querySelector<HTMLOutputElement>("[data-error]");
+  const octalEl = document.querySelector<HTMLInputElement>("[data-octal]")!;
+  const symbolicEl = document.querySelector<HTMLInputElement>("[data-symbolic]")!;
+  const errorEl = document.querySelector<HTMLOutputElement>("[data-error]")!;
 
   if (!octalEl || !symbolicEl || !errorEl) {
     throw new Error("mr chmod mount failed");

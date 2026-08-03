@@ -30,9 +30,9 @@
 <script>
   import { evaluate } from "./tool.ts";
 
-  const exprEl = document.querySelector<HTMLInputElement>("[data-expr]");
-  const outEl = document.querySelector<HTMLOutputElement>("[data-out]");
-  const errorEl = document.querySelector<HTMLOutputElement>("[data-error]");
+  const exprEl = document.querySelector<HTMLInputElement>("[data-expr]")!;
+  const outEl = document.querySelector<HTMLOutputElement>("[data-out]")!;
+  const errorEl = document.querySelector<HTMLOutputElement>("[data-error]")!;
   const chips = document.querySelectorAll<HTMLButtonElement>("[data-chip]");
 
   if (!exprEl || !outEl || !errorEl) {

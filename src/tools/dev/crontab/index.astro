@@ -53,10 +53,10 @@
 <script>
   import { nextRuns, PRESETS } from "./tool.ts";
 
-  const presetEl = document.querySelector<HTMLSelectElement>("[data-preset]");
-  const exprEl = document.querySelector<HTMLInputElement>("[data-expr]");
-  const runsEl = document.querySelector<HTMLOutputElement>("[data-runs]");
-  const errorEl = document.querySelector<HTMLOutputElement>("[data-error]");
+  const presetEl = document.querySelector<HTMLSelectElement>("[data-preset]")!;
+  const exprEl = document.querySelector<HTMLInputElement>("[data-expr]")!;
+  const runsEl = document.querySelector<HTMLOutputElement>("[data-runs]")!;
+  const errorEl = document.querySelector<HTMLOutputElement>("[data-error]")!;
   const fieldEls: Record<string, HTMLInputElement> = {};
   document.querySelectorAll<HTMLInputElement>("[data-field]").forEach((el) => {
     fieldEls[el.dataset.field ?? ""] = el;

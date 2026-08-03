@@ -40,11 +40,11 @@
   import { randomPort, classifyPort, RANGES, COMMON_CONFLICTS, type PortRange } from "./tool.ts";
   import { copyTextWithFeedback } from "@/lib/clipboard";
 
-  const rangeEl = document.querySelector<HTMLSelectElement>("[data-range]");
-  const countEl = document.querySelector<HTMLInputElement>("[data-count]");
-  const excludeEl = document.querySelector<HTMLInputElement>("[data-exclude]");
-  const genBtn = document.querySelector<HTMLButtonElement>("[data-generate]");
-  const out = document.querySelector<HTMLOutputElement>("[data-out]");
+  const rangeEl = document.querySelector<HTMLSelectElement>("[data-range]")!;
+  const countEl = document.querySelector<HTMLInputElement>("[data-count]")!;
+  const excludeEl = document.querySelector<HTMLInputElement>("[data-exclude]")!;
+  const genBtn = document.querySelector<HTMLButtonElement>("[data-generate]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
 
   if (!rangeEl || !countEl || !excludeEl || !genBtn || !out) {
     throw new Error("mr port mount failed");

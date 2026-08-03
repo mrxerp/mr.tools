@@ -1,15 +1,6 @@
 const subtle = globalThis.crypto.subtle;
 const encoder = new TextEncoder();
 
-function b64urlEncode(bytes: Uint8Array): string {
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
 function b64urlDecode(part: string): Uint8Array {
   let input = part.replace(/-/g, "+").replace(/_/g, "/");
   while (input.length % 4 !== 0) input += "=";

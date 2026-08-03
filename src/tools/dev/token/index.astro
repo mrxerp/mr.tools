@@ -46,10 +46,10 @@
   document.querySelectorAll<HTMLInputElement>("[data-opt]").forEach((el) => {
     optsEls.set(el.dataset.opt ?? "", el);
   });
-  const lengthEl = document.querySelector<HTMLInputElement>("[data-length]");
-  const countEl = document.querySelector<HTMLInputElement>("[data-count]");
-  const genBtn = document.querySelector<HTMLButtonElement>("[data-generate]");
-  const out = document.querySelector<HTMLOutputElement>("[data-out]");
+  const lengthEl = document.querySelector<HTMLInputElement>("[data-length]")!;
+  const countEl = document.querySelector<HTMLInputElement>("[data-count]")!;
+  const genBtn = document.querySelector<HTMLButtonElement>("[data-generate]")!;
+  const out = document.querySelector<HTMLOutputElement>("[data-out]")!;
 
   if (!lengthEl || !countEl || !genBtn || !out || optsEls.size !== 4) {
     throw new Error("mr token mount failed");
